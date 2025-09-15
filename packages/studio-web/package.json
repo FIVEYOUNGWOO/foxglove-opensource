@@ -4,7 +4,9 @@
   "private": true,
   "main": "./src/index.tsx",
   "dependencies": {
-    "@foxglove/studio-base": "workspace:*"
+    "@foxglove/studio-base": "workspace:*",
+    "@types/webrtc": "^0.0.26",
+    "simple-peer": "^9.11.1"
   },
   "devDependencies": {
     "@fluentui/react-icons": "2.0.224",
@@ -22,6 +24,7 @@
     "react-dom": "18.2.0",
     "tss-react": "4.9.3",
     "webpack": "5.90.0",
-    "webpack-dev-server": "4.15.1"
+    "webpack-dev-server": "4.15.1",
+    "@types/simple-peer": "^9.11.0"
   }
 }

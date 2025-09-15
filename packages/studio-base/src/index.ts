@@ -35,6 +35,9 @@ export { default as UlogLocalDataSourceFactory } from "./dataSources/UlogLocalDa
 export { default as RemoteDataSourceFactory } from "./dataSources/RemoteDataSourceFactory";
 export { default as McapLocalDataSourceFactory } from "./dataSources/McapLocalDataSourceFactory";
 export { default as SampleNuscenesDataSourceFactory } from "./dataSources/SampleNuscenesDataSourceFactory";
+
+// Add webRTC
+export { default as WebRTCDataSourceFactory } from "./dataSources/WebRTCDataSourceFactory";
 export { LaunchPreferenceValue } from "@foxglove/studio-base/types/LaunchPreferenceValue";
 export { reportError, setReportErrorHandler } from "./reportError";
 export { makeWorkspaceContextInitialState } from "./providers/WorkspaceContextProvider";

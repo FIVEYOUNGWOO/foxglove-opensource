@@ -16,6 +16,7 @@ import {
   UlogLocalDataSourceFactory,
   McapLocalDataSourceFactory,
   SampleNuscenesDataSourceFactory,
+  WebRTCDataSourceFactory,
   SharedRoot,
 } from "@foxglove/studio-base";
 
@@ -47,6 +48,7 @@ export function WebRoot(props: {
       new RosbridgeDataSourceFactory(),
       new UlogLocalDataSourceFactory(),
       new SampleNuscenesDataSourceFactory(),
+      new WebRTCDataSourceFactory(),
       new McapLocalDataSourceFactory(),
       new RemoteDataSourceFactory(),
     ];

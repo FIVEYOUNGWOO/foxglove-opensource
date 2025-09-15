@@ -28,7 +28,7 @@ export default class FoxgloveWebSocketDataSourceFactory implements IDataSourceFa
     {
       label: "custom data",
       url: "https://docs.foxglove.dev/docs/connecting-to-data/frameworks/custom#foxglove-websocket",
-    },
+    }
   ];
 
   public formConfig = {
