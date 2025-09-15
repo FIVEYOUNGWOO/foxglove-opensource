@@ -17,11 +17,8 @@ import {
     public description = "Connect to real-time RADAR and camera data streams using WebRTC protocol for ultra-low-latency transmission.";
 
     public docsLinks = [
-      {
-        label: "WebRTC Setup Guide",
-        url: "https://docs.example.com/webrtc-setup",
-      },
-    ];
+        { url: "https://webrtc.org/" },
+      ];
 
     public formConfig = {
       fields: [
