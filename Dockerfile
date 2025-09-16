@@ -1,9 +1,14 @@
-# Build stage
+# Build stage -
+# We have to upgrade node.js version 16 to 18.
+# But some dependencies are not compatible with node.js 16v, and use it at least 14v.
 FROM node:16 as build
 WORKDIR /src
+
 COPY . ./
 
-RUN corepack enable
+# RUN corepack enable
+# Upgrade to adapt stable yarn verison.
+RUN corepack enable && corepack prepare yarn@stable --activate
 RUN yarn install --immutable
 
 RUN yarn run web:build:prod
