@@ -20,6 +20,24 @@ import {
         { url: "https://webrtc.org/" },
       ];
 
+
+    // ERROR in ./packages/studio-base/src/dataSources/WebRTCDataSourceFactory.ts:23:12
+    // TS2416: Property 'formConfig' in type 'WebRTCDataSourceFactory' is not assignable to the same property in base type 'IDataSourceFactory'.
+    //   Type '{ fields: ({ id: string; label: string; defaultValue: string; validate: (newValue: string) => Error | undefined; type?: undefined; } | { id: string; label: string; type: "boolean"; defaultValue: boolean; validate?: undefined; })[]; }' is not assignable to type '{ fields: Field[]; }'.
+    //     Types of property 'fields' are incompatible.
+    //       Type '({ id: string; label: string; defaultValue: string; validate: (newValue: string) => Error | undefined; type?: undefined; } | { id: string; label: string; type: "boolean"; defaultValue: boolean; validate?: undefined; })[]' is not assignable to type 'Field[]'.
+    //         Type '{ id: string; label: string; defaultValue: string; validate: (newValue: string) => Error | undefined; type?: undefined; } | { id: string; label: string; type: "boolean"; defaultValue: boolean; validate?: undefined; }' is not assignable to type 'Field'.
+    //           Type '{ id: string; label: string; type: "boolean"; defaultValue: boolean; validate?: undefined; }' is not assignable to type 'Field'.
+    //             Types of property 'defaultValue' are incompatible.
+    //               Type 'boolean' is not assignable to type 'string'.
+    //     21 |       ];
+    //     22 |
+    //   > 23 |     public formConfig = {
+    //        |            ^^^^^^^^^^
+    //     24 |       fields: [
+    //     25 |         {
+    //     26 |           id: "signalingUrl",
+
     public formConfig = {
       fields: [
         {
@@ -66,6 +84,42 @@ import {
       if (!signalingUrl) {
         return;
       }
+
+
+
+      // ERROR in ./packages/studio-base/src/dataSources/WebRTCDataSourceFactory.ts:70:7
+      // TS2741: Property 'setPublishers' is missing in type 'WebRTCPlayer' but required in type 'Player'.
+      //     68 |       }
+      //     69 |
+      //   > 70 |       return new WebRTCPlayer({
+      //        |       ^^^^^^
+      //     71 |         signalingUrl,
+      //     72 |         streamId: streamId || "radar_stream_1",
+      //     73 |         autoReconnect,
+
+      // ERROR in ./packages/studio-base/src/dataSources/WebRTCDataSourceFactory.ts:73:9
+      // TS2322: Type 'string | true' is not assignable to type 'boolean | undefined'.
+      //   Type 'string' is not assignable to type 'boolean | undefined'.
+      //     71 |         signalingUrl,
+      //     72 |         streamId: streamId || "radar_stream_1",
+      //   > 73 |         autoReconnect,
+      //        |         ^^^^^^^^^^^^^
+      //     74 |         metricsCollector: args.metricsCollector,
+      //     75 |         sourceId: this.id,
+      //     76 |       });
+
+    // Also, the defination setPublishers () as below :
+
+    // public setPublishers(publishers: AdvertiseOptions[]): void {
+    //   // Since `setPublishers` is rarely called, we can get away with just throwing away the old
+    //   // Roslib.Topic objects and creating new ones.
+    //   for (const publisher of this.#topicPublishers.values()) {
+    //     publisher.unadvertise();
+    //   }
+    //   this.#topicPublishers.clear();
+    //   this.#advertisements = publishers;
+    //   this.#setupPublishers();
+    // }
 
       return new WebRTCPlayer({
         signalingUrl,

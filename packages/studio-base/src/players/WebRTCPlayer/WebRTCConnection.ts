@@ -64,6 +64,21 @@ export class WebRTCConnection {
           type: 'ice-candidate',
           candidate: event.candidate
         };
+
+        // ERROR in ./packages/studio-base/src/players/WebRTCPlayer/WebRTCConnection.ts:67:29
+        // TS2769: No overload matches this call.
+        //   Overload 1 of 2, '(data: string | Blob | ArrayBufferView | ArrayBufferLike): void', gave the following error.
+        //     Argument of type 'string | undefined' is not assignable to parameter of type 'string | Blob | ArrayBufferView | ArrayBufferLike'.
+        //   Overload 2 of 2, '(data: string | Blob | ArrayBufferView | ArrayBufferLike): void', gave the following error.
+        //     Argument of type 'string | undefined' is not assignable to parameter of type 'string | Blob | ArrayBufferView | ArrayBufferLike'.
+        //     65 |           candidate: event.candidate
+        //     66 |         };
+        //   > 67 |         this.websocket.send(JSON.stringify(message));
+        //        |                             ^^^^^^^^^^^^^^^^^^^^^^^
+        //     68 |       }
+        //     69 |     };
+        //     70 |
+
         this.websocket.send(JSON.stringify(message));
       }
     };
@@ -91,6 +106,21 @@ export class WebRTCConnection {
       type: 'join-room',
       room: this.streamId
     };
+
+    // ERROR in ./packages/studio-base/src/players/WebRTCPlayer/WebRTCConnection.ts:95:26
+    // TS2769: No overload matches this call.
+    //   Overload 1 of 2, '(data: string | Blob | ArrayBufferView | ArrayBufferLike): void | undefined', gave the following error.
+    //     Argument of type 'string | undefined' is not assignable to parameter of type 'string | Blob | ArrayBufferView | ArrayBufferLike'.
+    //       Type 'undefined' is not assignable to type 'string | Blob | ArrayBufferView | ArrayBufferLike'.
+    //   Overload 2 of 2, '(data: string | Blob | ArrayBufferView | ArrayBufferLike): void | undefined', gave the following error.
+    //     Argument of type 'string | undefined' is not assignable to parameter of type 'string | Blob | ArrayBufferView | ArrayBufferLike'.
+    //     93 |     };
+    //     94 |
+    //   > 95 |     this.websocket?.send(JSON.stringify(joinMessage));
+    //       |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    //     96 |   }
+    //     97 |
+    //     98 |   private async handleSignalingMessage(message: SignalingMessage): Promise<void> {
 
     this.websocket?.send(JSON.stringify(joinMessage));
   }
@@ -121,6 +151,21 @@ export class WebRTCConnection {
       type: 'answer',
       sdp: answer.sdp!
     };
+
+    // ERROR in ./packages/studio-base/src/players/WebRTCPlayer/WebRTCConnection.ts:124:26
+    // TS2769: No overload matches this call.
+    //   Overload 1 of 2, '(data: string | Blob | ArrayBufferView | ArrayBufferLike): void | undefined', gave the following error.
+    //     Argument of type 'string | undefined' is not assignable to parameter of type 'string | Blob | ArrayBufferView | ArrayBufferLike'.
+    //   Overload 2 of 2, '(data: string | Blob | ArrayBufferView | ArrayBufferLike): void | undefined', gave the following error.
+    //     Argument of type 'string | undefined' is not assignable to parameter of type 'string | Blob | ArrayBufferView | ArrayBufferLike'.
+    //     122 |       sdp: answer.sdp!
+    //     123 |     };
+    //   > 124 |     this.websocket?.send(JSON.stringify(answerMessage));
+    //         |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    //     125 |   }
+    //     126 |
+    //     127 |   private async handleIceCandidate(message: SignalingMessage): Promise<void> {
+
     this.websocket?.send(JSON.stringify(answerMessage));
   }
 

@@ -54,6 +54,16 @@ export class MessageProcessor {
       },
       message: webrtcMessage.data,
       schemaName: webrtcMessage.messageType,
+
+      // ERROR in ./packages/studio-base/src/players/WebRTCPlayer/MessageProcessor.ts:57:20
+      // TS2532: Object is possibly 'undefined'.
+      //     55 |       message: webrtcMessage.data,
+      //     56 |       schemaName: webrtcMessage.messageType,
+      //   > 57 |       sizeInBytes: JSON.stringify(webrtcMessage.data).length
+      //        |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      //     58 |     };
+      //     59 |   }
+      //     60 |
       sizeInBytes: JSON.stringify(webrtcMessage.data).length
     };
   }

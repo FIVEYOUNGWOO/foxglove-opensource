@@ -60,6 +60,27 @@ export function WebRoot(props: {
     <SharedRoot
       enableLaunchPreferenceScreen
       deepLinks={[window.location.href]}
+
+
+      // ERROR in ./packages/studio-web/src/WebRoot.tsx:63:7
+      // TS2322: Type 'IDataSourceFactory[] | (FoxgloveWebSocketDataSourceFactory | Ros1LocalBagDataSourceFactory | ... 6 more ... | WebRTCDataSourceFactory)[]' is not assignable to type 'readonly IDataSourceFactory[]'.
+      //   Type '(FoxgloveWebSocketDataSourceFactory | Ros1LocalBagDataSourceFactory | Ros2LocalBagDataSourceFactory | ... 5 more ... | WebRTCDataSourceFactory)[]' is not assignable to type 'readonly IDataSourceFactory[]'.
+      //     Type 'FoxgloveWebSocketDataSourceFactory | Ros1LocalBagDataSourceFactory | Ros2LocalBagDataSourceFactory | ... 5 more ... | WebRTCDataSourceFactory' is not assignable to type 'IDataSourceFactory'.
+      //       Type 'WebRTCDataSourceFactory' is not assignable to type 'IDataSourceFactory'.
+      //         The types of 'formConfig.fields' are incompatible between these types.
+      //           Type '({ id: string; label: string; defaultValue: string; validate: (newValue: string) => Error | undefined; type?: undefined; } | { id: string; label: string; type: "boolean"; defaultValue: boolean; validate?: undefined; })[]' is not assignable to type 'Field[]'.
+      //             Type '{ id: string; label: string; defaultValue: string; validate: (newValue: string) => Error | undefined; type?: undefined; } | { id: string; label: string; type: "boolean"; defaultValue: boolean; validate?: undefined; }' is not assignable to type 'Field'.
+      //               Type '{ id: string; label: string; type: "boolean"; defaultValue: boolean; validate?: undefined; }' is not assignable to type 'Field'.
+      //                 Types of property 'defaultValue' are incompatible.
+      //                   Type 'boolean' is not assignable to type 'string'.
+      //     61 |       enableLaunchPreferenceScreen
+      //     62 |       deepLinks={[window.location.href]}
+      //   > 63 |       dataSources={dataSources}
+      //        |       ^^^^^^^^^^^
+      //     64 |       appConfiguration={appConfiguration}
+      //     65 |       enableGlobalCss
+      //     66 |       extraProviders={props.extraProviders}
+
       dataSources={dataSources}
       appConfiguration={appConfiguration}
       enableGlobalCss

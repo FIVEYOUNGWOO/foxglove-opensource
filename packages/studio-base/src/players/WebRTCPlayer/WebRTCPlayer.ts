@@ -12,6 +12,17 @@ import { WebRTCConnection } from "./WebRTCConnection";
 import { MessageProcessor } from "./MessageProcessor";
 import { WebRTCPlayerOptions, WebRTCConnectionState } from "./types";
 
+
+// ERROR in ./packages/studio-base/src/players/WebRTCPlayer/WebRTCPlayer.ts:15:22
+// TS2420: Class 'WebRTCPlayer' incorrectly implements interface 'Player'.
+//   Property 'setPublishers' is missing in type 'WebRTCPlayer' but required in type 'Player'.
+//     13 | import { WebRTCPlayerOptions, WebRTCConnectionState } from "./types";
+//     14 |
+//   > 15 | export default class WebRTCPlayer implements Player {
+//       |                      ^^^^^^^^^^^^
+//     16 |   private _id = uuidv4();
+//     17 |   private _listener?: (playerState: PlayerState) => Promise<void>;
+//     18 |   private _closed = false;
 export default class WebRTCPlayer implements Player {
   private _id = uuidv4();
   private _listener?: (playerState: PlayerState) => Promise<void>;
@@ -24,6 +35,17 @@ export default class WebRTCPlayer implements Player {
   private _topics: Topic[] = [];
   private _subscriptions = new Set<string>();
   private _messageQueue: MessageEvent<unknown>[] = [];
+
+
+  // ERROR in ./packages/studio-base/src/players/WebRTCPlayer/WebRTCPlayer.ts:28:23
+  // TS6138: Property 'options' is declared but its value is never read.
+  //     26 |   private _messageQueue: MessageEvent<unknown>[] = [];
+  //     27 |
+  //   > 28 |   constructor(private options: WebRTCPlayerOptions) {
+  //        |                       ^^^^^^^
+  //     29 |     this.messageProcessor = new MessageProcessor();
+  //     30 |
+  //     31 |     this.connection = new WebRTCConnection(
 
   constructor(private options: WebRTCPlayerOptions) {
     this.messageProcessor = new MessageProcessor();
@@ -79,6 +101,17 @@ export default class WebRTCPlayer implements Player {
       playerId: this._id,
       activeData: {
         messages,
+
+        // ERROR in ./packages/studio-base/src/players/WebRTCPlayer/WebRTCPlayer.ts:84:9
+        // TS2322: Type 'undefined' is not assignable to type 'Time'.
+        //     82 |         totalBytesReceived: 0,
+        //     83 |         startTime: undefined,
+        //   > 84 |         endTime: undefined,
+        //        |         ^^^^^^^
+        //     85 |         currentTime: { sec: Math.floor(Date.now() / 1000), nsec: 0 },
+        //     86 |         isPlaying: this.connectionState === WebRTCConnectionState.CONNECTED,
+        //     87 |         speed: 1,
+
         totalBytesReceived: 0,
         startTime: undefined,
         endTime: undefined,
