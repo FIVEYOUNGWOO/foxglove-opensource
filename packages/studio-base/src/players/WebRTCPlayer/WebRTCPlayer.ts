@@ -28,9 +28,8 @@ export default class WebRTCPlayer implements Player {
   private _topics: Topic[] = [];
   private _subscriptions = new Set<string>();
   private _messageQueue: MessageEvent<unknown>[] = [];
-  private _publishers: AdvertiseOptions[] = []; // Store publishers to satisfy interface
 
-  constructor(private _options: WebRTCPlayerOptions) { // Fix: Use _options to avoid unused warning
+  constructor(private _options: WebRTCPlayerOptions) { // Fix: Use _options consistently
     this.messageProcessor = new MessageProcessor();
 
     this.connection = new WebRTCConnection(
@@ -149,9 +148,10 @@ export default class WebRTCPlayer implements Player {
 
   // Fix: Implement setPublishers method that was missing
   setPublishers(publishers: AdvertiseOptions[]): void {
-    this._publishers = [...publishers]; // Fix: Use spread to actually use the array
     // WebRTC doesn't typically support publishing back to the stream
     // but we implement this to satisfy the interface
+    // We don't need to store publishers for WebRTC real-time streaming
+    console.log(`WebRTC Player: setPublishers called with ${publishers.length} publishers`);
   }
 
   setPublications(): void {

@@ -167,7 +167,6 @@ export class WebRTCConnection {
   }
 }
 
-
 // import { WebRTCConnectionState, SignalingMessage } from "./types";
 
 // export class WebRTCConnection {
