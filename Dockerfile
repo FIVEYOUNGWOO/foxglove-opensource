@@ -1,6 +1,5 @@
 # Build stage -
-# We have to upgrade node.js version 16 to 18.
-# But some dependencies are not compatible with node.js 16v, and use it at least 14v.
+# We have to upgrade node.js version at least 16.
 FROM node:16 as build
 #WORKDIR /src
 WORKDIR /foxglove-opensource
