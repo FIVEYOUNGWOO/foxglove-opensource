@@ -6,11 +6,14 @@ FROM node:16 as build
 WORKDIR /foxglove-opensource
 COPY . ./
 
-# RUN corepack enable
-# Upgrade to adapt stable yarn verison.
 
-# RUN corepack enable && corepack prepare yarn@stable --activate
+# Upgrade to adapt stable yarn verison.
+# The original foxglove-stduio applies yarn v3.6.3 version.
+# However, Ubuntu 20.04 PC default corepack version is 0.10.0, which does not support yarn v3.6.3.
 RUN corepack enable
+# RUN corepack enable && corepack prepare yarn@stable --activate
+# RUN corepack enable && corepack prepare yarn@3.6.3 --activate
+
 RUN yarn install --immutable
 RUN yarn run web:build:prod
 
