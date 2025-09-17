@@ -54,8 +54,8 @@ export class MessageProcessor {
       },
       message: webrtcMessage.data,
       schemaName: webrtcMessage.messageType,
-      // Fix: Check if data exists before stringify and handle null/undefined
-      sizeInBytes: webrtcMessage.data != null ? JSON.stringify(webrtcMessage.data ?? {}).length : 0
+      // Fix: Use type assertion to handle TypeScript strict null checks
+      sizeInBytes: webrtcMessage.data != null ? JSON.stringify(webrtcMessage.data as any).length : 0
     };
   }
 
@@ -63,6 +63,10 @@ export class MessageProcessor {
     return this.topicStats;
   }
 }
+
+
+
+
 // import { MessageEvent } from "@foxglove/studio-base/players/types";
 // import { WebRTCMessage, WebRTCBatchMessage } from "./types";
 

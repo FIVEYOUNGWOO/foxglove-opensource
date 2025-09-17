@@ -29,12 +29,12 @@ export default class WebRTCPlayer implements Player {
   private _subscriptions = new Set<string>();
   private _messageQueue: MessageEvent<unknown>[] = [];
 
-  constructor(private _options: WebRTCPlayerOptions) { // Fix: Use _options consistently
+  constructor(options: WebRTCPlayerOptions) { // Fix: Remove private to avoid unused warning
     this.messageProcessor = new MessageProcessor();
 
     this.connection = new WebRTCConnection(
-      _options.signalingUrl,  // Fix: Use _options
-      _options.streamId,      // Fix: Use _options
+      options.signalingUrl,  // Fix: Use options directly
+      options.streamId,      // Fix: Use options directly
       this.handleMessage.bind(this),
       this.handleStateChange.bind(this)
     );
