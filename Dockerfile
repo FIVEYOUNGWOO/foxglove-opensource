@@ -1,25 +1,34 @@
 # Build stage -
 # We have to upgrade node.js version at least 16.
-FROM node:16 as build
 #WORKDIR /src
+FROM node:16 as build
 WORKDIR /foxglove-opensource
 COPY . ./
-
 
 # Upgrade to adapt stable yarn verison.
 # The original foxglove-stduio applies yarn v3.6.3 version.
 # However, Ubuntu 20.04 PC default corepack version is 0.10.0, which does not support yarn v3.6.3.
-RUN corepack enable
-# RUN corepack enable && corepack prepare yarn@stable --activate
 # RUN corepack enable && corepack prepare yarn@3.6.3 --activate
+RUN corepack enable
+
+# Install git lfs (large file storage) to pull large files.
+RUN lfs install --force
+RUN lfs fetch --all
+RUN lfs checkout
+
+# Prevent yarn install --immutable installation errors.
+RUN sudo rm -rf .yarn/cache
+RUN sudo yarn install --check-cache
+RUN sudo yarn up comlink
 
 RUN yarn install --immutable
 RUN yarn run web:build:prod
 
+
 # Release stage
-FROM caddy:2.5.2-alpine
 # WORKDIR /src
 # COPY --from=build /src/web/.webpack ./
+FROM caddy:2.5.2-alpine
 WORKDIR /foxglove-opensource
 COPY --from=build /foxglove-opensource/web/.webpack ./
 
