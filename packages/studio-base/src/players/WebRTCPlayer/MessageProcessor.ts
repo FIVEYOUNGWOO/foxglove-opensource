@@ -1,6 +1,5 @@
 import { MessageEvent } from "@foxglove/studio-base/players/types";
 import { WebRTCMessage, WebRTCBatchMessage } from "./types";
-import { dark } from '../../../../theme/src/palette';
 
 export class MessageProcessor {
   private topicStats = new Map<string, any>();
