@@ -1,5 +1,6 @@
 import { MessageEvent } from "@foxglove/studio-base/players/types";
 import { WebRTCMessage, WebRTCBatchMessage } from "./types";
+import { dark } from '../../../../theme/src/palette';
 
 export class MessageProcessor {
   private topicStats = new Map<string, any>();
@@ -46,17 +47,18 @@ export class MessageProcessor {
   private convertToFoxgloveMessage(webrtcMessage: WebRTCMessage): MessageEvent<unknown> {
     const timestamp = webrtcMessage.timestamp;
 
-    // Calculate actual message size in bytes with fallback
+    // Encoding the received JSON msg. to utf-8 byte array to calculate bytes size
     let sizeInBytes = 0;
     if (webrtcMessage.data != null) {
       try {
         const jsonString = JSON.stringify(webrtcMessage.data);
         if (typeof TextEncoder !== 'undefined') {
           sizeInBytes = new TextEncoder().encode(jsonString).length;
-        } else {
-          // Fallback for environments without TextEncoder
-          sizeInBytes = jsonString.length;
         }
+        // else {
+        //   // Fallback for environments without TextEncoder
+        //   sizeInBytes = jsonString.length;
+        // }
       } catch (error) {
         console.warn("Failed to calculate message size:", error);
         sizeInBytes = 0;
