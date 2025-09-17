@@ -2,21 +2,24 @@
 # We have to upgrade node.js version 16 to 18.
 # But some dependencies are not compatible with node.js 16v, and use it at least 14v.
 FROM node:16 as build
-WORKDIR /src
-
+#WORKDIR /src
+WORKDIR /foxglove-opensource
 COPY . ./
 
 # RUN corepack enable
 # Upgrade to adapt stable yarn verison.
-RUN corepack enable && corepack prepare yarn@stable --activate
-RUN yarn install --immutable
 
+# RUN corepack enable && corepack prepare yarn@stable --activate
+RUN corepack enable
+RUN yarn install --immutable
 RUN yarn run web:build:prod
 
 # Release stage
 FROM caddy:2.5.2-alpine
-WORKDIR /src
-COPY --from=build /src/web/.webpack ./
+# WORKDIR /src
+# COPY --from=build /src/web/.webpack ./
+WORKDIR /foxglove-opensource
+COPY --from=build /foxglove-opensource/web/.webpack ./
 
 EXPOSE 8080
 
