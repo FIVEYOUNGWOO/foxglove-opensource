@@ -54,8 +54,14 @@ export class MessageProcessor {
       },
       message: webrtcMessage.data,
       schemaName: webrtcMessage.messageType,
+
+
+
+
+
       // Fix: Use type assertion to handle TypeScript strict null checks
-      sizeInBytes: webrtcMessage.data != null ? JSON.stringify(webrtcMessage.data as any).length : 0
+      // sizeInBytes: webrtcMessage.data != null ? JSON.stringify(webrtcMessage.data as any).length : 0
+
     };
   }
 
