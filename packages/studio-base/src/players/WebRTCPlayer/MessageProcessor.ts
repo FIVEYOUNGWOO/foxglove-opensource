@@ -46,6 +46,23 @@ export class MessageProcessor {
   private convertToFoxgloveMessage(webrtcMessage: WebRTCMessage): MessageEvent<unknown> {
     const timestamp = webrtcMessage.timestamp;
 
+    // Calculate actual message size in bytes with fallback
+    let sizeInBytes = 0;
+    if (webrtcMessage.data != null) {
+      try {
+        const jsonString = JSON.stringify(webrtcMessage.data);
+        if (typeof TextEncoder !== 'undefined') {
+          sizeInBytes = new TextEncoder().encode(jsonString).length;
+        } else {
+          // Fallback for environments without TextEncoder
+          sizeInBytes = jsonString.length;
+        }
+      } catch (error) {
+        console.warn("Failed to calculate message size:", error);
+        sizeInBytes = 0;
+      }
+    }
+
     return {
       topic: webrtcMessage.topic,
       receiveTime: {
@@ -54,14 +71,7 @@ export class MessageProcessor {
       },
       message: webrtcMessage.data,
       schemaName: webrtcMessage.messageType,
-
-
-
-
-
-      // Fix: Use type assertion to handle TypeScript strict null checks
-      // sizeInBytes: webrtcMessage.data != null ? JSON.stringify(webrtcMessage.data as any).length : 0
-
+      sizeInBytes
     };
   }
 
