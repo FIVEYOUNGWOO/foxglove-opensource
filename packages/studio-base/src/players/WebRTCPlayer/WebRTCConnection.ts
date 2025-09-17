@@ -67,7 +67,9 @@ export class WebRTCConnection {
 
         // Fix: Ensure websocket exists and stringify message
         const messageStr = JSON.stringify(message);
-        this.websocket.send(messageStr);
+        if (messageStr) {
+          this.websocket.send(messageStr);
+        }
       }
     };
 
@@ -98,7 +100,9 @@ export class WebRTCConnection {
     // Fix: Ensure websocket exists and stringify message
     if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
       const messageStr = JSON.stringify(joinMessage);
-      this.websocket.send(messageStr);
+      if (messageStr) {
+        this.websocket.send(messageStr);
+      }
     }
   }
 
@@ -132,7 +136,9 @@ export class WebRTCConnection {
     // Fix: Ensure websocket exists and stringify message
     if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
       const messageStr = JSON.stringify(answerMessage);
-      this.websocket.send(messageStr);
+      if (messageStr) {
+        this.websocket.send(messageStr);
+      }
     }
   }
 

@@ -54,8 +54,8 @@ export class MessageProcessor {
       },
       message: webrtcMessage.data,
       schemaName: webrtcMessage.messageType,
-      // Fix: Check if data exists before stringify
-      sizeInBytes: webrtcMessage.data ? JSON.stringify(webrtcMessage.data).length : 0
+      // Fix: Check if data exists before stringify and handle null/undefined
+      sizeInBytes: webrtcMessage.data != null ? JSON.stringify(webrtcMessage.data).length : 0
     };
   }
 

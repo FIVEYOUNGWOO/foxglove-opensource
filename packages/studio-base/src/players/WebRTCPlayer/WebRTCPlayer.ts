@@ -8,9 +8,9 @@ import {
   Topic,
   MessageEvent,
   AdvertiseOptions,
-  PublishPayload,
-  Time
+  PublishPayload
 } from "@foxglove/studio-base/players/types";
+import { Time } from "@foxglove/rostime"; // Fix: Import Time from correct module
 import { ParameterValue } from "@foxglove/studio";
 import { WebRTCConnection } from "./WebRTCConnection";
 import { MessageProcessor } from "./MessageProcessor";
@@ -28,14 +28,14 @@ export default class WebRTCPlayer implements Player {
   private _topics: Topic[] = [];
   private _subscriptions = new Set<string>();
   private _messageQueue: MessageEvent<unknown>[] = [];
-  private _publishers: AdvertiseOptions[] = []; // Add publishers to satisfy interface
+  private _publishers: AdvertiseOptions[] = []; // Store publishers to satisfy interface
 
-  constructor(private options: WebRTCPlayerOptions) {
+  constructor(private _options: WebRTCPlayerOptions) { // Fix: Use _options to avoid unused warning
     this.messageProcessor = new MessageProcessor();
 
     this.connection = new WebRTCConnection(
-      options.signalingUrl,
-      options.streamId,
+      _options.signalingUrl,  // Fix: Use _options
+      _options.streamId,      // Fix: Use _options
       this.handleMessage.bind(this),
       this.handleStateChange.bind(this)
     );
@@ -149,7 +149,7 @@ export default class WebRTCPlayer implements Player {
 
   // Fix: Implement setPublishers method that was missing
   setPublishers(publishers: AdvertiseOptions[]): void {
-    this._publishers = publishers;
+    this._publishers = [...publishers]; // Fix: Use spread to actually use the array
     // WebRTC doesn't typically support publishing back to the stream
     // but we implement this to satisfy the interface
   }

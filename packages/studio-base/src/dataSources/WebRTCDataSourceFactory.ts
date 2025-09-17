@@ -77,9 +77,11 @@ export default class WebRTCDataSourceFactory implements IDataSourceFactory {
   public initialize(args: DataSourceFactoryInitializeArgs): Player | undefined {
     const signalingUrl = args.params?.signalingUrl;
     const streamId = args.params?.streamId;
-    // Fix: Parse string to boolean for autoReconnect
+    // Fix: Parse string to boolean for autoReconnect - handle both string and boolean types
     const autoReconnectParam = args.params?.autoReconnect;
-    const autoReconnect = autoReconnectParam === "true" || autoReconnectParam === true;
+    const autoReconnect = typeof autoReconnectParam === "string"
+      ? autoReconnectParam === "true"
+      : Boolean(autoReconnectParam);
 
     if (!signalingUrl) {
       return;
