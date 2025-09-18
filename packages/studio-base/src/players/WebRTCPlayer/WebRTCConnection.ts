@@ -1,4 +1,5 @@
-// WebRTCConnection.ts — 주요 변경분 (대체해서 사용)
+// WebRTCConnection.ts — 최종 수정본
+
 import { WebRTCConnectionState, SignalingMessage } from "./types";
 
 export class WebRTCConnection {
@@ -7,8 +8,8 @@ export class WebRTCConnection {
   private dataChannel?: RTCDataChannel;
   private state: WebRTCConnectionState = WebRTCConnectionState.DISCONNECTED;
 
-  // optional buffer for incoming ICE candidates before remote desc is set
-  private pendingRemoteCandidates: any[] = [];
+  // remoteDescription이 설정되기 전 수신된 ICE 후보를 임시 저장하는 버퍼
+  private pendingRemoteCandidates: RTCIceCandidateInit[] = [];
 
   constructor(
     private signalingUrl: string,
@@ -20,11 +21,9 @@ export class WebRTCConnection {
   async connect(): Promise<boolean> {
     try {
       this.setState(WebRTCConnectionState.CONNECTING);
-
       await this.connectToSignalingServer();
       this.setupPeerConnection();
       await this.joinRoom();
-
       return true;
     } catch (error) {
       console.error("WebRTC connection failed:", error);
@@ -44,7 +43,7 @@ export class WebRTCConnection {
 
       this.websocket.onmessage = (event) => {
         try {
-          const msg = JSON.parse(event.data);
+          const msg = JSON.parse(event.data) as SignalingMessage;
           void this.handleSignalingMessage(msg);
         } catch (e) {
           console.error("Invalid signaling message:", e);
@@ -59,24 +58,17 @@ export class WebRTCConnection {
 
   private setupPeerConnection(): void {
     const config: RTCConfiguration = {
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
-      ]
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }]
     };
 
     this.peerConnection = new RTCPeerConnection(config);
 
-    // send local ICE candidates to signaling server
     this.peerConnection.onicecandidate = (event) => {
-      if (event.candidate && this.websocket?.readyState === WebSocket.OPEN) {
+      // ✅ FIX: websocket이 null이 아님을 명확히 보장하고, toJSON()으로 안전하게 직렬화
+      if (event.candidate && this.websocket && this.websocket.readyState === WebSocket.OPEN) {
         const message: SignalingMessage = {
           type: 'ice-candidate',
-          candidate: {
-            candidate: event.candidate.candidate,
-            sdpMid: event.candidate.sdpMid,
-            sdpMLineIndex: event.candidate.sdpMLineIndex
-          }
+          candidate: event.candidate.toJSON() // toJSON()을 사용하여 RTCIceCandidateInit 타입 객체 생성
         };
         this.websocket.send(JSON.stringify(message));
       }
@@ -91,7 +83,6 @@ export class WebRTCConnection {
       }
     };
 
-    // If remote creates a datachannel (we are answerer), handle it
     this.peerConnection.ondatachannel = (event) => {
       const channel = event.channel;
       this.attachDataChannelHandlers(channel);
@@ -100,25 +91,15 @@ export class WebRTCConnection {
 
   private attachDataChannelHandlers(channel: RTCDataChannel) {
     this.dataChannel = channel;
-
-    this.dataChannel.onopen = () => {
-      console.log("Data channel opened");
-    };
-    this.dataChannel.onmessage = (ev) => {
-      this.onMessage(ev.data);
-    };
-    this.dataChannel.onclose = () => {
-      console.warn("Data channel closed");
-    };
-    this.dataChannel.onerror = (err) => {
-      console.error("Data channel error:", err);
-    };
+    this.dataChannel.onopen = () => console.log("Data channel opened");
+    this.dataChannel.onmessage = (ev) => this.onMessage(ev.data);
+    this.dataChannel.onclose = () => console.warn("Data channel closed");
+    this.dataChannel.onerror = (err) => console.error("Data channel error:", err);
   }
 
   private async createAndSendOffer(): Promise<void> {
     if (!this.peerConnection) return;
 
-    // create datachannel (offerer)
     if (!this.dataChannel) {
       const dc = this.peerConnection.createDataChannel('data');
       this.attachDataChannelHandlers(dc);
@@ -127,10 +108,7 @@ export class WebRTCConnection {
     const offer = await this.peerConnection.createOffer();
     await this.peerConnection.setLocalDescription(offer);
 
-    const offerMessage: SignalingMessage = {
-      type: 'offer',
-      sdp: offer.sdp!
-    };
+    const offerMessage: SignalingMessage = { type: 'offer', sdp: offer.sdp ?? "" };
 
     if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
       this.websocket.send(JSON.stringify(offerMessage));
@@ -138,10 +116,7 @@ export class WebRTCConnection {
   }
 
   private async joinRoom(): Promise<void> {
-    const joinMessage: SignalingMessage = {
-      type: 'join-room',
-      room: this.streamId
-    };
+    const joinMessage: SignalingMessage = { type: 'join-room', room: this.streamId };
 
     if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
       this.websocket.send(JSON.stringify(joinMessage));
@@ -149,47 +124,44 @@ export class WebRTCConnection {
   }
 
   private async handleSignalingMessage(message: SignalingMessage): Promise<void> {
+    const pc = this.peerConnection;
+    if (!pc) return;
+
     switch (message.type) {
       case 'start_connection':
-        // server told us to initiate an offer (this client is offerer)
         console.info("Received start_connection -> creating offer");
         await this.createAndSendOffer();
         break;
 
       case 'offer':
-        // If we get an offer, we're the answerer: set remote, create+send answer
-        if (!this.peerConnection || !message.sdp) return;
-        await this.peerConnection.setRemoteDescription({ type: 'offer', sdp: message.sdp });
-        // add any buffered candidates
-        if (this.pendingRemoteCandidates.length) {
-          for (const c of this.pendingRemoteCandidates) {
-            try { await this.peerConnection.addIceCandidate(c); } catch(e){ console.warn(e); }
-          }
-          this.pendingRemoteCandidates = [];
+        if (!message.sdp) return;
+        await pc.setRemoteDescription({ type: 'offer', sdp: message.sdp });
+
+        for (const candidate of this.pendingRemoteCandidates) {
+          try { await pc.addIceCandidate(candidate); } catch (e) { console.warn(e); }
         }
-        const answer = await this.peerConnection.createAnswer();
-        await this.peerConnection.setLocalDescription(answer);
+        this.pendingRemoteCandidates = [];
+
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+
         if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
-          this.websocket.send(JSON.stringify({ type: 'answer', sdp: answer.sdp }));
+          this.websocket.send(JSON.stringify({ type: 'answer', sdp: answer.sdp ?? "" }));
         }
         break;
 
       case 'answer':
-        // Offerer receives answer -> set remote description
-        if (!this.peerConnection || !message.sdp) return;
-        await this.peerConnection.setRemoteDescription({ type: 'answer', sdp: message.sdp });
+        if (!message.sdp) return;
+        await pc.setRemoteDescription({ type: 'answer', sdp: message.sdp });
         break;
 
       case 'ice-candidate':
-        if (!this.peerConnection) return;
-        // Candidate may arrive before remote description - buffer it
-        const cand = message.candidate;
+        if (!message.candidate) return;
         try {
-          // If remoteDesc is set, add immediately
-          if (this.peerConnection.remoteDescription && this.peerConnection.remoteDescription.type) {
-            await this.peerConnection.addIceCandidate(cand);
+          if (pc.remoteDescription) {
+            await pc.addIceCandidate(message.candidate);
           } else {
-            this.pendingRemoteCandidates.push(cand);
+            this.pendingRemoteCandidates.push(message.candidate);
           }
         } catch (e) {
           console.warn("Failed to add ICE candidate:", e);
@@ -209,15 +181,9 @@ export class WebRTCConnection {
   }
 
   async close(): Promise<void> {
-    if (this.dataChannel) {
-      this.dataChannel.close();
-    }
-    if (this.peerConnection) {
-      this.peerConnection.close();
-    }
-    if (this.websocket) {
-      this.websocket.close();
-    }
+    this.dataChannel?.close();
+    this.peerConnection?.close();
+    this.websocket?.close();
   }
 }
 

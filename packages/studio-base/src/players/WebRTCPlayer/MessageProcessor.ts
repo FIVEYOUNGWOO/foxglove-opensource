@@ -66,15 +66,19 @@ export class MessageProcessor {
         const jsonString = JSON.stringify(webrtcMessage.data);
         if (typeof TextEncoder !== 'undefined') {
           sizeInBytes = new TextEncoder().encode(jsonString).length;
-        } else {
-          // fallback for older environments
-          try {
-            // @ts-ignore
-            sizeInBytes = new Blob([jsonString]).size;
-          } catch (e) {
-            sizeInBytes = jsonString.length;
-          }
         }
+        // else
+        // {
+        //   // fallback for older environments
+        //   try {
+        //     // @ts-ignore
+        //     sizeInBytes = new Blob([jsonString]).size;
+        //   }
+        //   catch (e)
+        //   {
+        //     sizeInBytes = jsonString.length;
+        //   }
+        // }
       } catch (error) {
         console.warn("Failed to calculate message size:", error);
         sizeInBytes = 0;
