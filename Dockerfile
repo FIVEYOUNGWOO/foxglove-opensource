@@ -16,18 +16,18 @@ RUN corepack enable
 
 # Below command lines soley use Ubuntu 20.04 to remove yarn installation error during Docker build.
 # Install git lfs (large file storage) to fetch large files.
-RUN git lfs install --force
-RUN git lfs fetch --all
-RUN git lfs checkout
+# RUN git lfs install --force
+# RUN git lfs fetch --all
+# RUN git lfs checkout
 
 # Prevent yarn install --immutable installation errors.
-RUN sudo rm -rf .yarn/cache
-RUN sudo yarn install --check-cache
-RUN sudo yarn up comlink
+# RUN sudo rm -rf .yarn/cache
+# RUN sudo yarn install --check-cache
+# RUN sudo yarn up comlink
 
 # add yarn.lock file on this 'foxglove-opensource' project dict.
-RUN sudo git add yarn.lock
-RUN sudo commit -m "Update yarn.lock to adapt yarn v3.6.3"
+# RUN sudo git add yarn.lock
+# RUN sudo commit -m "Update yarn.lock to adapt yarn v3.6.3"
 # RUN sudo git push
 
 
