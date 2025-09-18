@@ -26,6 +26,10 @@ export default class FoxgloveWebSocketDataSourceFactory implements IDataSourceFa
       url: "https://docs.foxglove.dev/docs/connecting-to-data/frameworks/ros2#foxglove-websocket",
     },
     {
+      label: "WebRTC",
+      url: "https://webrtc.org",
+    },
+    {
       label: "custom data",
       url: "https://docs.foxglove.dev/docs/connecting-to-data/frameworks/custom#foxglove-websocket",
     }
