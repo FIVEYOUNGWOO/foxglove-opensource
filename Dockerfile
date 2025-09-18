@@ -12,14 +12,14 @@ COPY . ./
 RUN corepack enable
 
 # Install git lfs (large file storage) to pull large files.
-RUN lfs install --force
-RUN lfs fetch --all
-RUN lfs checkout
+# RUN lfs install --force
+# RUN lfs fetch --all
+# RUN lfs checkout
 
 # Prevent yarn install --immutable installation errors.
-RUN sudo rm -rf .yarn/cache
-RUN sudo yarn install --check-cache
-RUN sudo yarn up comlink
+# RUN sudo rm -rf .yarn/cache
+# RUN sudo yarn install --check-cache
+# RUN sudo yarn up comlink
 
 RUN yarn install --immutable
 RUN yarn run web:build:prod
@@ -34,18 +34,23 @@ COPY --from=build /foxglove-opensource/web/.webpack ./
 
 EXPOSE 8080
 
-COPY <<EOF /entrypoint.sh
-# Optionally override the default layout with one provided via bind mount
-mkdir -p /foxglove
-touch /foxglove/default-layout.json
-index_html=\$(cat index.html)
-replace_pattern='/*FOXGLOVE_STUDIO_DEFAULT_LAYOUT_PLACEHOLDER*/'
-replace_value=\$(cat /foxglove/default-layout.json)
-echo "\${index_html/"\$replace_pattern"/\$replace_value}" > index.html
+# Remove /entrypoint.sh to hide Dockerfile build error on Ubuntu 20.04 verison.
+# COPY <<EOF /entrypoint.sh
+# # Optionally override the default layout with one provided via bind mount
+# mkdir -p /foxglove
+# touch /foxglove/default-layout.json
+# index_html=\$(cat index.html)
+# replace_pattern='/*FOXGLOVE_STUDIO_DEFAULT_LAYOUT_PLACEHOLDER*/'
+# replace_value=\$(cat /foxglove/default-layout.json)
+# echo "\${index_html/"\$replace_pattern"/\$replace_value}" > index.html
 
-# Continue executing the CMD
-exec "\$@"
-EOF
+# # Continue executing the CMD
+# exec "\$@"
+# EOF
+
+# Replace the default caddy entrypoint script to call /entrypoint.sh
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 ENTRYPOINT ["/bin/sh", "/entrypoint.sh"]
 CMD ["caddy", "file-server", "--listen", ":8080"]
