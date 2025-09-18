@@ -62,11 +62,16 @@ export class MessageProcessor {
     // Calculate actual message size in bytes with safe fallbacks
     let sizeInBytes = 0;
     if (webrtcMessage.data != null) {
-      try {
+      try
+      {
         const jsonString = JSON.stringify(webrtcMessage.data);
-        if (typeof TextEncoder !== 'undefined') {
+        if (typeof TextEncoder !== 'undefined')
+        {
           sizeInBytes = new TextEncoder().encode(jsonString).length;
         }
+
+        // DO NOT TOUCH
+        // where the condition 'undefined' is not important on latest Chrome, Firefox, and MS Edge verison.
         // else
         // {
         //   // fallback for older environments
@@ -79,6 +84,7 @@ export class MessageProcessor {
         //     sizeInBytes = jsonString.length;
         //   }
         // }
+
       } catch (error) {
         console.warn("Failed to calculate message size:", error);
         sizeInBytes = 0;
