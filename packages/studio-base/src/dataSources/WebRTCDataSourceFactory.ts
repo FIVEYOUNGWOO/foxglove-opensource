@@ -27,9 +27,9 @@ type Field = {
 export default class WebRTCDataSourceFactory implements IDataSourceFactory {
   public id = "webrtc-connection";
   public type: IDataSourceFactory["type"] = "connection";
-  public displayName = "WebRTC Real-time";
+  public displayName = "WebRTC";
   public iconName: IDataSourceFactory["iconName"] = "Flow";
-  public description = "Connect to real-time RADAR and camera data streams using WebRTC protocol for ultra-low-latency transmission.";
+  public description = "Connect to the RADAR streaming server via the WebRTC protocol.";
 
   public docsLinks = [
       { url: "https://webrtc.org/" },

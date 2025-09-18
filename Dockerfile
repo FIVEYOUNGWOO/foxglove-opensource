@@ -33,6 +33,7 @@ WORKDIR /foxglove-opensource
 COPY --from=build /foxglove-opensource/web/.webpack ./
 
 EXPOSE 8080
+EXPOSE 8000
 
 # Remove /entrypoint.sh to hide Dockerfile build error on Ubuntu 20.04 verison.
 # COPY <<EOF /entrypoint.sh
