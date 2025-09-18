@@ -73,11 +73,11 @@ export default class WebRTCPlayer implements Player {
     const messages = [...this._messageQueue];
     this._messageQueue = [];
 
-    // Get current timestamp
+    // Get current timestamp with proper precision
     const currentTimestamp = Date.now() / 1000;
     const currentTime: Time = {
       sec: Math.floor(currentTimestamp),
-      nsec: (currentTimestamp % 1) * 1e9
+      nsec: Math.floor((currentTimestamp % 1) * 1e9)  // Fix: Use Math.floor for nanoseconds
     };
 
     const playerState: PlayerState = {
@@ -199,23 +199,16 @@ export default class WebRTCPlayer implements Player {
 //   PlayerPresence,
 //   SubscribePayload,
 //   Topic,
-//   MessageEvent
+//   MessageEvent,
+//   AdvertiseOptions,
+//   PublishPayload
 // } from "@foxglove/studio-base/players/types";
+// import { Time } from "@foxglove/rostime"; // Fix: Import Time from correct module
+// import { ParameterValue } from "@foxglove/studio";
 // import { WebRTCConnection } from "./WebRTCConnection";
 // import { MessageProcessor } from "./MessageProcessor";
 // import { WebRTCPlayerOptions, WebRTCConnectionState } from "./types";
 
-
-// // ERROR in ./packages/studio-base/src/players/WebRTCPlayer/WebRTCPlayer.ts:15:22
-// // TS2420: Class 'WebRTCPlayer' incorrectly implements interface 'Player'.
-// //   Property 'setPublishers' is missing in type 'WebRTCPlayer' but required in type 'Player'.
-// //     13 | import { WebRTCPlayerOptions, WebRTCConnectionState } from "./types";
-// //     14 |
-// //   > 15 | export default class WebRTCPlayer implements Player {
-// //       |                      ^^^^^^^^^^^^
-// //     16 |   private _id = uuidv4();
-// //     17 |   private _listener?: (playerState: PlayerState) => Promise<void>;
-// //     18 |   private _closed = false;
 // export default class WebRTCPlayer implements Player {
 //   private _id = uuidv4();
 //   private _listener?: (playerState: PlayerState) => Promise<void>;
@@ -229,23 +222,12 @@ export default class WebRTCPlayer implements Player {
 //   private _subscriptions = new Set<string>();
 //   private _messageQueue: MessageEvent<unknown>[] = [];
 
-
-//   // ERROR in ./packages/studio-base/src/players/WebRTCPlayer/WebRTCPlayer.ts:28:23
-//   // TS6138: Property 'options' is declared but its value is never read.
-//   //     26 |   private _messageQueue: MessageEvent<unknown>[] = [];
-//   //     27 |
-//   //   > 28 |   constructor(private options: WebRTCPlayerOptions) {
-//   //        |                       ^^^^^^^
-//   //     29 |     this.messageProcessor = new MessageProcessor();
-//   //     30 |
-//   //     31 |     this.connection = new WebRTCConnection(
-
-//   constructor(private options: WebRTCPlayerOptions) {
+//   constructor(options: WebRTCPlayerOptions) { // Fix: Remove private to avoid unused warning
 //     this.messageProcessor = new MessageProcessor();
 
 //     this.connection = new WebRTCConnection(
-//       options.signalingUrl,
-//       options.streamId,
+//       options.signalingUrl,  // Fix: Use options directly
+//       options.streamId,      // Fix: Use options directly
 //       this.handleMessage.bind(this),
 //       this.handleStateChange.bind(this)
 //     );
@@ -284,6 +266,13 @@ export default class WebRTCPlayer implements Player {
 //     const messages = [...this._messageQueue];
 //     this._messageQueue = [];
 
+//     // Get current timestamp
+//     const currentTimestamp = Date.now() / 1000;
+//     const currentTime: Time = {
+//       sec: Math.floor(currentTimestamp),
+//       nsec: (currentTimestamp % 1) * 1e9
+//     };
+
 //     const playerState: PlayerState = {
 //       presence: this.connectionState === WebRTCConnectionState.CONNECTED
 //         ? PlayerPresence.PRESENT
@@ -294,21 +283,11 @@ export default class WebRTCPlayer implements Player {
 //       playerId: this._id,
 //       activeData: {
 //         messages,
-
-//         // ERROR in ./packages/studio-base/src/players/WebRTCPlayer/WebRTCPlayer.ts:84:9
-//         // TS2322: Type 'undefined' is not assignable to type 'Time'.
-//         //     82 |         totalBytesReceived: 0,
-//         //     83 |         startTime: undefined,
-//         //   > 84 |         endTime: undefined,
-//         //        |         ^^^^^^^
-//         //     85 |         currentTime: { sec: Math.floor(Date.now() / 1000), nsec: 0 },
-//         //     86 |         isPlaying: this.connectionState === WebRTCConnectionState.CONNECTED,
-//         //     87 |         speed: 1,
-
 //         totalBytesReceived: 0,
-//         startTime: undefined,
-//         endTime: undefined,
-//         currentTime: { sec: Math.floor(Date.now() / 1000), nsec: 0 },
+//         // Fix: Provide proper Time objects instead of undefined
+//         startTime: currentTime,
+//         endTime: currentTime,
+//         currentTime,
 //         isPlaying: this.connectionState === WebRTCConnectionState.CONNECTED,
 //         speed: 1,
 //         lastSeekTime: 0,
@@ -358,14 +337,49 @@ export default class WebRTCPlayer implements Player {
 //     return "unknown";
 //   }
 
-//   // 필수 Player 인터페이스 메서드들
-//   setPublications(): void {}
-//   setParameter(): void {}
-//   publish(): void {}
-//   async callService(): Promise<unknown> { throw new Error("Not supported"); }
-//   setGlobalVariables(): void {}
-//   startPlayback(): void {}
-//   pausePlayback(): void {}
-//   setPlaybackSpeed(): void {}
-//   seekPlayback(): void {}
+//   // Required Player interface methods
+
+//   // Fix: Implement setPublishers method that was missing
+//   setPublishers(publishers: AdvertiseOptions[]): void {
+//     // WebRTC doesn't typically support publishing back to the stream
+//     // but we implement this to satisfy the interface
+//     // We don't need to store publishers for WebRTC real-time streaming
+//     console.log(`WebRTC Player: setPublishers called with ${publishers.length} publishers`);
+//   }
+
+//   setPublications(): void {
+//     // No-op for WebRTC player
+//   }
+
+//   setParameter(_key: string, _value: ParameterValue): void {
+//     // No-op for WebRTC player
+//   }
+
+//   publish(_payload: PublishPayload): void {
+//     // No-op for WebRTC player - could be implemented if bidirectional communication is needed
+//   }
+
+//   async callService(): Promise<unknown> {
+//     throw new Error("Service calls not supported in WebRTC player");
+//   }
+
+//   setGlobalVariables(): void {
+//     // No-op for WebRTC player
+//   }
+
+//   startPlayback(): void {
+//     // No-op for WebRTC player - it's always "playing" when connected
+//   }
+
+//   pausePlayback(): void {
+//     // No-op for WebRTC player
+//   }
+
+//   setPlaybackSpeed(): void {
+//     // No-op for WebRTC player
+//   }
+
+//   seekPlayback(): void {
+//     // No-op for WebRTC player - real-time stream can't seek
+//   }
 // }

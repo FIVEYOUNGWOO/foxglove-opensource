@@ -46,15 +46,15 @@ export class MessageProcessor {
   private convertToFoxgloveMessage(webrtcMessage: WebRTCMessage): MessageEvent<unknown> {
     const timestamp = webrtcMessage.timestamp;
 
-    // Encoding the received JSON msg. to utf-8 byte array to calculate bytes size
+    // Calculate actual message size in bytes with fallback
     let sizeInBytes = 0;
     if (webrtcMessage.data != null) {
       try {
         const jsonString = JSON.stringify(webrtcMessage.data);
-        if (typeof TextEncoder !== 'undefined') {
+        if (jsonString && typeof TextEncoder !== 'undefined') {
           sizeInBytes = new TextEncoder().encode(jsonString).length;
         }
-        // else {
+        // else if (jsonString) {
         //   // Fallback for environments without TextEncoder
         //   sizeInBytes = jsonString.length;
         // }
@@ -80,9 +80,6 @@ export class MessageProcessor {
     return this.topicStats;
   }
 }
-
-
-
 
 // import { MessageEvent } from "@foxglove/studio-base/players/types";
 // import { WebRTCMessage, WebRTCBatchMessage } from "./types";
@@ -132,6 +129,24 @@ export class MessageProcessor {
 //   private convertToFoxgloveMessage(webrtcMessage: WebRTCMessage): MessageEvent<unknown> {
 //     const timestamp = webrtcMessage.timestamp;
 
+//     // Encoding the received JSON msg. to utf-8 byte array to calculate bytes size
+//     let sizeInBytes = 0;
+//     if (webrtcMessage.data != null) {
+//       try {
+//         const jsonString = JSON.stringify(webrtcMessage.data);
+//         if (typeof TextEncoder !== 'undefined') {
+//           sizeInBytes = new TextEncoder().encode(jsonString).length;
+//         }
+//         // else {
+//         //   // Fallback for environments without TextEncoder
+//         //   sizeInBytes = jsonString.length;
+//         // }
+//       } catch (error) {
+//         console.warn("Failed to calculate message size:", error);
+//         sizeInBytes = 0;
+//       }
+//     }
+
 //     return {
 //       topic: webrtcMessage.topic,
 //       receiveTime: {
@@ -140,17 +155,7 @@ export class MessageProcessor {
 //       },
 //       message: webrtcMessage.data,
 //       schemaName: webrtcMessage.messageType,
-
-//       // ERROR in ./packages/studio-base/src/players/WebRTCPlayer/MessageProcessor.ts:57:20
-//       // TS2532: Object is possibly 'undefined'.
-//       //     55 |       message: webrtcMessage.data,
-//       //     56 |       schemaName: webrtcMessage.messageType,
-//       //   > 57 |       sizeInBytes: JSON.stringify(webrtcMessage.data).length
-//       //        |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-//       //     58 |     };
-//       //     59 |   }
-//       //     60 |
-//       sizeInBytes: JSON.stringify(webrtcMessage.data).length
+//       sizeInBytes
 //     };
 //   }
 
