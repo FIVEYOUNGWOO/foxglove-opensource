@@ -40,7 +40,7 @@ export default class WebRTCDataSourceFactory implements IDataSourceFactory {
     fields: [
       {
         id: "signalingUrl",
-        label: "Signaling Server URL",
+        label: "Signaling URL",
         // Herein, the default value set as Ubuntu 20.04 static IP address
         defaultValue: "ws://localhost:8000",
         validate: (newValue: string): Error | undefined => {

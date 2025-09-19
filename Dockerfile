@@ -11,9 +11,6 @@ COPY . ./
 # RUN corepack enable && corepack prepare yarn@3.6.3 --activate
 RUN corepack enable
 
-
-
-
 # Below command lines soley use Ubuntu 20.04 to remove yarn installation error during Docker build.
 # Install git lfs (large file storage) to fetch large files.
 # RUN git lfs install --force
@@ -29,15 +26,6 @@ RUN corepack enable
 # RUN sudo git add yarn.lock
 # RUN sudo commit -m "Update yarn.lock to adapt yarn v3.6.3"
 # RUN sudo git push
-
-
-
-
-
-
-
-
-
 
 RUN yarn install --immutable
 RUN yarn run web:build:prod
@@ -69,6 +57,26 @@ EXPOSE 8000
 # Replace the default caddy entrypoint script to call /entrypoint.sh
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
+
+
+
+
+
+
+
+
+
+
+
+# TODO - Add 'python_server_runner.py' and 'python_signaling_runner.py' to run python servers.
+
+
+
+
+
+
+
+
 
 ENTRYPOINT ["/bin/sh", "/entrypoint.sh"]
 CMD ["caddy", "file-server", "--listen", ":8080"]

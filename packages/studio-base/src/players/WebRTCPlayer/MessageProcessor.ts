@@ -10,9 +10,11 @@ export class MessageProcessor {
       const parsedMessage = this.parseWebRTCMessage(data);
       if (!parsedMessage) return [];
 
-      if (this.isWebRTCBatchMessage(parsedMessage)) {
+      if (this.isWebRTCBatchMessage(parsedMessage))
+      {
         return parsedMessage.messages.map(msg => this.convertToFoxgloveMessage(msg));
-      } else {
+      } else
+      {
         return [this.convertToFoxgloveMessage(parsedMessage as WebRTCMessage)];
       }
     } catch (error) {
@@ -25,8 +27,11 @@ export class MessageProcessor {
     try {
       let messageData: any;
 
+      // TODO
+      // check serialized JSON data
       if (typeof data === 'string') {
         messageData = JSON.parse(data);
+
       } else if (data instanceof ArrayBuffer) {
         const decoder = new TextDecoder();
         const jsonString = decoder.decode(data);
