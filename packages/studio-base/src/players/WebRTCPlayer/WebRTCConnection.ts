@@ -1,4 +1,7 @@
-import { WebRTCConnectionState, SignalingMessage } from "./types";
+// Enhanced WebRTC Connection Handler with Comprehensive Error Handling
+// This module manages WebRTC peer connections, signaling, and data channel communication
+
+import { WebRTCConnectionState, SignalingMessage, WebRTCConnectionConfig, DataChannelConfig } from "./types";
 
 export class WebRTCConnection {
   private websocket?: WebSocket;
@@ -6,33 +9,80 @@ export class WebRTCConnection {
   private dataChannel?: RTCDataChannel;
   private state: WebRTCConnectionState = WebRTCConnectionState.DISCONNECTED;
   private pendingRemoteCandidates: RTCIceCandidateInit[] = [];
+  private connectionAttempts: number = 0;
+  private maxConnectionAttempts: number = 5;
+  private reconnectionDelay: number = 3000; // 3 seconds
 
   constructor(
     private signalingUrl: string,
     private streamId: string,
     private onMessage: (data: any) => void,
-    private onStateChange: (state: WebRTCConnectionState) => void
-  ) {}
+    private onStateChange: (state: WebRTCConnectionState) => void,
+    private config: WebRTCConnectionConfig = {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' }
+      ],
+      iceCandidatePoolSize: 10
+    },
+    private dataChannelConfig: DataChannelConfig = {
+      ordered: true,
+      maxRetransmits: 3
+    }
+  ) {
+    // Configuration is set via default parameters
+  }
 
   async connect(): Promise<boolean> {
+    if (this.connectionAttempts >= this.maxConnectionAttempts) {
+      console.error(`Maximum connection attempts (${this.maxConnectionAttempts}) exceeded`);
+      this.setState(WebRTCConnectionState.FAILED);
+      return false;
+    }
+
     try {
+      this.connectionAttempts++;
       this.setState(WebRTCConnectionState.CONNECTING);
+
+      console.log(`WebRTC connection attempt ${this.connectionAttempts}/${this.maxConnectionAttempts}`);
+
       await this.connectToSignalingServer();
       this.setupPeerConnection();
       await this.joinRoom();
+
       return true;
     } catch (error) {
       console.error("WebRTC connection failed:", error);
       this.setState(WebRTCConnectionState.FAILED);
+
+      // Attempt automatic reconnection if configured
+      if (this.connectionAttempts < this.maxConnectionAttempts) {
+        console.log(`Retrying connection in ${this.reconnectionDelay}ms...`);
+        setTimeout(() => {
+          void this.connect();
+        }, this.reconnectionDelay);
+      }
+
       return false;
     }
   }
 
   private async connectToSignalingServer(): Promise<void> {
     return new Promise((resolve, reject) => {
+      // Clean up existing websocket if any
+      if (this.websocket) {
+        this.websocket.close();
+      }
+
       this.websocket = new WebSocket(this.signalingUrl);
 
+      const connectionTimeout = setTimeout(() => {
+        reject(new Error("Signaling server connection timeout"));
+      }, 10000); // 10 second timeout
+
       this.websocket.onopen = () => {
+        clearTimeout(connectionTimeout);
         console.log("Connected to signaling server");
         resolve();
       };
@@ -47,74 +97,192 @@ export class WebRTCConnection {
       };
 
       this.websocket.onerror = (error) => {
+        clearTimeout(connectionTimeout);
+        console.error("Signaling server connection error:", error);
         reject(error);
+      };
+
+      this.websocket.onclose = (event) => {
+        clearTimeout(connectionTimeout);
+        console.log("Signaling server connection closed:", event.code, event.reason);
+
+        // Handle unexpected closures
+        if (this.state === WebRTCConnectionState.CONNECTED || this.state === WebRTCConnectionState.CONNECTING) {
+          this.setState(WebRTCConnectionState.RECONNECTING);
+
+          // Attempt to reconnect after a delay
+          setTimeout(() => {
+            void this.connect();
+          }, this.reconnectionDelay);
+        }
       };
     });
   }
 
   private setupPeerConnection(): void {
-    const config: RTCConfiguration = {
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
-      ]
+    // Clean up existing peer connection if any
+    if (this.peerConnection) {
+      this.peerConnection.close();
+    }
+
+    this.peerConnection = new RTCPeerConnection(this.config);
+
+    // Set up connection state monitoring
+    this.peerConnection.onconnectionstatechange = () => {
+      const state = this.peerConnection?.connectionState;
+      console.log(`WebRTC peer connection state: ${state}`);
+
+      switch (state) {
+        case 'connected':
+          this.setState(WebRTCConnectionState.CONNECTED);
+          this.connectionAttempts = 0; // Reset attempts on successful connection
+          break;
+        case 'failed':
+        case 'disconnected':
+        case 'closed':
+          this.setState(WebRTCConnectionState.DISCONNECTED);
+          // Attempt reconnection for failed/disconnected states
+          if (state === 'failed' || state === 'disconnected') {
+            this.setState(WebRTCConnectionState.RECONNECTING);
+            setTimeout(() => {
+              void this.connect();
+            }, this.reconnectionDelay);
+          }
+          break;
+        case 'connecting':
+          this.setState(WebRTCConnectionState.CONNECTING);
+          break;
+      }
     };
 
-    this.peerConnection = new RTCPeerConnection(config);
-
+    // ICE candidate handling with improved error handling
     this.peerConnection.onicecandidate = (event) => {
       if (event.candidate && this.websocket && this.websocket.readyState === WebSocket.OPEN) {
         const message: SignalingMessage = {
           type: 'ice-candidate',
-          candidate: event.candidate.toJSON() // RTCIceCandidateInit 반환
+          candidate: event.candidate.toJSON() // Use toJSON() for proper serialization
         };
-        const messageStr = JSON.stringify(message);
-        this.websocket.send(messageStr);
+
+        try {
+          const messageStr = JSON.stringify(message);
+          this.websocket.send(messageStr);
+          console.debug("ICE candidate sent successfully");
+        } catch (error) {
+          console.error("Failed to send ICE candidate:", error);
+        }
       }
     };
 
-    this.peerConnection.onconnectionstatechange = () => {
-      const state = this.peerConnection?.connectionState;
-      if (state === 'connected') {
-        this.setState(WebRTCConnectionState.CONNECTED);
-      } else if (state === 'failed' || state === 'disconnected' || state === 'closed') {
-        this.setState(WebRTCConnectionState.DISCONNECTED);
+    // ICE connection state monitoring
+    this.peerConnection.oniceconnectionstatechange = () => {
+      const iceState = this.peerConnection?.iceConnectionState;
+      console.log(`ICE connection state: ${iceState}`);
+
+      if (iceState === 'failed' || iceState === 'disconnected') {
+        console.warn("ICE connection failed, attempting to reconnect...");
+        this.setState(WebRTCConnectionState.RECONNECTING);
+        setTimeout(() => {
+          void this.connect();
+        }, this.reconnectionDelay);
       }
     };
 
+    // ICE gathering state monitoring
+    this.peerConnection.onicegatheringstatechange = () => {
+      const gatheringState = this.peerConnection?.iceGatheringState;
+      console.log(`ICE gathering state: ${gatheringState}`);
+    };
+
+    // Data channel handling
     this.peerConnection.ondatachannel = (event) => {
       const channel = event.channel;
+      console.log(`Received data channel: ${channel.label}`);
       this.attachDataChannelHandlers(channel);
     };
   }
 
   private attachDataChannelHandlers(channel: RTCDataChannel) {
     this.dataChannel = channel;
-    this.dataChannel.onopen = () => console.log("Data channel opened");
-    this.dataChannel.onmessage = (ev) => this.onMessage(ev.data);
-    this.dataChannel.onclose = () => console.warn("Data channel closed");
-    this.dataChannel.onerror = (err) => console.error("Data channel error:", err);
+
+    this.dataChannel.onopen = () => {
+      console.log("Data channel opened successfully");
+      this.setState(WebRTCConnectionState.CONNECTED);
+    };
+
+    this.dataChannel.onmessage = (ev) => {
+      try {
+        // Handle both string and binary data
+        let messageData: any;
+
+        if (typeof ev.data === 'string') {
+          messageData = ev.data;
+        } else if (ev.data instanceof ArrayBuffer) {
+          messageData = ev.data;
+        } else if (ev.data instanceof Blob) {
+          // Convert Blob to ArrayBuffer if needed
+          ev.data.arrayBuffer().then(buffer => {
+            this.onMessage(buffer);
+          }).catch(error => {
+            console.error("Failed to convert Blob to ArrayBuffer:", error);
+          });
+          return;
+        } else {
+          console.warn("Received unsupported data type:", typeof ev.data);
+          return;
+        }
+
+        this.onMessage(messageData);
+
+      } catch (error) {
+        console.error("Error processing data channel message:", error);
+      }
+    };
+
+    this.dataChannel.onclose = () => {
+      console.warn("Data channel closed");
+      this.setState(WebRTCConnectionState.DISCONNECTED);
+    };
+
+    this.dataChannel.onerror = (err) => {
+      console.error("Data channel error:", err);
+      this.setState(WebRTCConnectionState.FAILED);
+    };
   }
 
   private async createAndSendOffer(): Promise<void> {
-    if (!this.peerConnection) return;
-
-    if (!this.dataChannel) {
-      const dc = this.peerConnection.createDataChannel('data');
-      this.attachDataChannelHandlers(dc);
+    if (!this.peerConnection) {
+      throw new Error("Peer connection not initialized");
     }
 
-    const offer = await this.peerConnection.createOffer();
-    await this.peerConnection.setLocalDescription(offer);
+    try {
+      // Create data channel if it doesn't exist (for offerer)
+      if (!this.dataChannel) {
+        const dc = this.peerConnection.createDataChannel('data', this.dataChannelConfig);
+        this.attachDataChannelHandlers(dc);
+      }
 
-    const offerMessage: SignalingMessage = {
-      type: 'offer',
-      sdp: offer.sdp ?? ""
-    };
+      const offer = await this.peerConnection.createOffer({
+        offerToReceiveAudio: false,
+        offerToReceiveVideo: false
+      });
 
-    if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
-      const messageStr = JSON.stringify(offerMessage);
-      this.websocket.send(messageStr);
+      await this.peerConnection.setLocalDescription(offer);
+
+      const offerMessage: SignalingMessage = {
+        type: 'offer',
+        sdp: offer.sdp || ""
+      };
+
+      if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+        const messageStr = JSON.stringify(offerMessage);
+        this.websocket.send(messageStr);
+        console.log("Offer sent successfully");
+      } else {
+        throw new Error("WebSocket not ready for sending offer");
+      }
+    } catch (error) {
+      console.error("Error creating or sending offer:", error);
+      throw error;
     }
   }
 
@@ -127,247 +295,414 @@ export class WebRTCConnection {
     if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
       const messageStr = JSON.stringify(joinMessage);
       this.websocket.send(messageStr);
+      console.log(`Joined room: ${this.streamId}`);
+    } else {
+      throw new Error("WebSocket not ready for joining room");
     }
   }
 
   private async handleSignalingMessage(message: SignalingMessage): Promise<void> {
     const pc = this.peerConnection;
-    if (!pc) return;
+    if (!pc) {
+      console.error("Received signaling message but peer connection not initialized");
+      return;
+    }
 
-    switch (message.type) {
-      case 'start_connection':
-        console.info("Received start_connection -> creating offer");
-        await this.createAndSendOffer();
-        break;
+    try {
+      switch (message.type) {
+        case 'start_connection':
+          console.info("Received start_connection signal, creating offer");
+          await this.createAndSendOffer();
+          break;
 
-      case 'offer':
-        if (!message.sdp) return;
-        await pc.setRemoteDescription({ type: 'offer', sdp: message.sdp });
+        case 'offer':
+          if (!message.sdp) {
+            console.error("Received offer without SDP");
+            return;
+          }
 
-        for (const candidate of this.pendingRemoteCandidates) {
+          console.log("Processing offer from peer");
+          await pc.setRemoteDescription({ type: 'offer', sdp: message.sdp });
+
+          // Process any buffered ICE candidates
+          for (const candidate of this.pendingRemoteCandidates) {
+            try {
+              await pc.addIceCandidate(candidate);
+              console.debug("Added buffered ICE candidate");
+            } catch (e) {
+              console.warn("Failed to add buffered ICE candidate:", e);
+            }
+          }
+          this.pendingRemoteCandidates = [];
+
+          // Create and send answer
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+
+          if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+            const answerMessage: SignalingMessage = {
+              type: 'answer',
+              sdp: answer.sdp || ""
+            };
+            const messageStr = JSON.stringify(answerMessage);
+            this.websocket.send(messageStr);
+            console.log("Answer sent successfully");
+          }
+          break;
+
+        case 'answer':
+          if (!message.sdp) {
+            console.error("Received answer without SDP");
+            return;
+          }
+
+          console.log("Processing answer from peer");
+          await pc.setRemoteDescription({ type: 'answer', sdp: message.sdp });
+
+          // Process any buffered ICE candidates
+          for (const candidate of this.pendingRemoteCandidates) {
+            try {
+              await pc.addIceCandidate(candidate);
+              console.debug("Added buffered ICE candidate");
+            } catch (e) {
+              console.warn("Failed to add buffered ICE candidate:", e);
+            }
+          }
+          this.pendingRemoteCandidates = [];
+          break;
+
+        case 'ice-candidate':
+          if (!message.candidate) {
+            console.debug("Received end-of-candidates signal");
+            return;
+          }
+
           try {
-            await pc.addIceCandidate(candidate);
+            if (pc.remoteDescription) {
+              await pc.addIceCandidate(message.candidate);
+              console.debug("ICE candidate added successfully");
+            } else {
+              // Buffer candidates until remote description is set
+              this.pendingRemoteCandidates.push(message.candidate);
+              console.debug("ICE candidate buffered (waiting for remote description)");
+            }
           } catch (e) {
-            console.warn(e);
+            console.warn("Failed to add ICE candidate:", e);
           }
-        }
-        this.pendingRemoteCandidates = [];
+          break;
 
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
+        case 'peer_state_change':
+          const peerState = message.state || 'unknown';
+          console.log(`Peer state changed to: ${peerState}`);
+          break;
 
-        if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
-          const answerMessage = { type: 'answer', sdp: answer.sdp ?? "" };
-          const messageStr = JSON.stringify(answerMessage);
-          this.websocket.send(messageStr);
-        }
-        break;
+        case 'peer_disconnected':
+          console.warn("Peer disconnected");
+          this.setState(WebRTCConnectionState.DISCONNECTED);
+          break;
 
-      case 'answer':
-        if (!message.sdp) return;
-        await pc.setRemoteDescription({ type: 'answer', sdp: message.sdp });
-        break;
+        case 'error':
+          console.error("Signaling error:", message.error);
+          this.setState(WebRTCConnectionState.FAILED);
+          break;
 
-      case 'ice-candidate':
-        if (!message.candidate) return;
-        try {
-          if (pc.remoteDescription) {
-            await pc.addIceCandidate(message.candidate);
-          } else {
-            this.pendingRemoteCandidates.push(message.candidate);
-          }
-        } catch (e) {
-          console.warn("Failed to add ICE candidate:", e);
-        }
-        break;
-
-      default:
-        console.debug("Unhandled signaling message type:", message.type);
+        default:
+          console.debug("Unhandled signaling message type:", message.type);
+      }
+    } catch (error) {
+      console.error(`Error handling signaling message (${message.type}):`, error);
     }
   }
 
   private setState(newState: WebRTCConnectionState): void {
     if (this.state !== newState) {
+      const oldState = this.state;
       this.state = newState;
+      console.log(`WebRTC state change: ${oldState} -> ${newState}`);
       this.onStateChange(newState);
     }
   }
 
+  // Public method to send data through the data channel
+  public send(data: string | ArrayBuffer | ArrayBufferView): boolean {
+    if (!this.dataChannel || this.dataChannel.readyState !== 'open') {
+      console.warn("Data channel not ready for sending");
+      return false;
+    }
+
+    try {
+      this.dataChannel.send(data);
+      return true;
+    } catch (error) {
+      console.error("Failed to send data:", error);
+      return false;
+    }
+  }
+
+  // Get current connection statistics
+  public getStats(): Promise<RTCStatsReport> | null {
+    if (!this.peerConnection) {
+      return null;
+    }
+    return this.peerConnection.getStats();
+  }
+
+  // Get current connection state
+  public getState(): WebRTCConnectionState {
+    return this.state;
+  }
+
+  // Check if connection is ready for data transmission
+  public isReady(): boolean {
+    return this.state === WebRTCConnectionState.CONNECTED &&
+           this.dataChannel?.readyState === 'open';
+  }
+
+  // Force reconnection
+  public async reconnect(): Promise<boolean> {
+    console.log("Forcing WebRTC reconnection...");
+    await this.close();
+    this.connectionAttempts = 0; // Reset attempts for manual reconnection
+    return await this.connect();
+  }
+
+  // Close all connections and clean up resources
   async close(): Promise<void> {
-    this.dataChannel?.close();
-    this.peerConnection?.close();
-    this.websocket?.close();
+    console.log("Closing WebRTC connection...");
+
+    this.setState(WebRTCConnectionState.DISCONNECTED);
+
+    // Close data channel
+    if (this.dataChannel) {
+      if (this.dataChannel.readyState === 'open') {
+        this.dataChannel.close();
+      }
+      this.dataChannel = undefined;
+    }
+
+    // Close peer connection
+    if (this.peerConnection) {
+      this.peerConnection.close();
+      this.peerConnection = undefined;
+    }
+
+    // Close WebSocket
+    if (this.websocket) {
+      if (this.websocket.readyState === WebSocket.OPEN || this.websocket.readyState === WebSocket.CONNECTING) {
+        this.websocket.close();
+      }
+      this.websocket = undefined;
+    }
+
+    // Clear pending candidates
+    this.pendingRemoteCandidates = [];
+
+    console.log("WebRTC connection closed and resources cleaned up");
   }
 }
 
-// // import { WebRTCConnectionState, SignalingMessage } from "./types";
 
-// // export class WebRTCConnection {
-// //   private websocket?: WebSocket;
-// //   private peerConnection?: RTCPeerConnection;
-// //   private dataChannel?: RTCDataChannel;
-// //   private state: WebRTCConnectionState = WebRTCConnectionState.DISCONNECTED;
+// import { WebRTCConnectionState, SignalingMessage } from "./types";
 
-// //   constructor(
-// //     private signalingUrl: string,
-// //     private streamId: string,
-// //     private onMessage: (data: any) => void,
-// //     private onStateChange: (state: WebRTCConnectionState) => void
-// //   ) {}
+// export class WebRTCConnection {
+//   private websocket?: WebSocket;
+//   private peerConnection?: RTCPeerConnection;
+//   private dataChannel?: RTCDataChannel;
+//   private state: WebRTCConnectionState = WebRTCConnectionState.DISCONNECTED;
+//   private pendingRemoteCandidates: RTCIceCandidateInit[] = [];
 
-// //   async connect(): Promise<boolean> {
-// //     try {
-// //       this.setState(WebRTCConnectionState.CONNECTING);
+//   constructor(
+//     private signalingUrl: string,
+//     private streamId: string,
+//     private onMessage: (data: any) => void,
+//     private onStateChange: (state: WebRTCConnectionState) => void
+//   ) {}
 
-// //       await this.connectToSignalingServer();
-// //       this.setupPeerConnection();
-// //       await this.joinRoom();
+//   async connect(): Promise<boolean> {
+//     try {
+//       this.setState(WebRTCConnectionState.CONNECTING);
+//       await this.connectToSignalingServer();
+//       this.setupPeerConnection();
+//       await this.joinRoom();
+//       return true;
+//     } catch (error) {
+//       console.error("WebRTC connection failed:", error);
+//       this.setState(WebRTCConnectionState.FAILED);
+//       return false;
+//     }
+//   }
 
-// //       return true;
-// //     } catch (error) {
-// //       console.error("WebRTC connection failed:", error);
-// //       this.setState(WebRTCConnectionState.FAILED);
-// //       return false;
-// //     }
-// //   }
+//   private async connectToSignalingServer(): Promise<void> {
+//     return new Promise((resolve, reject) => {
+//       this.websocket = new WebSocket(this.signalingUrl);
 
-// //   private async connectToSignalingServer(): Promise<void> {
-// //     return new Promise((resolve, reject) => {
-// //       this.websocket = new WebSocket(this.signalingUrl);
+//       this.websocket.onopen = () => {
+//         console.log("Connected to signaling server");
+//         resolve();
+//       };
 
-// //       this.websocket.onopen = () => {
-// //         console.log("Connected to signaling server");
-// //         resolve();
-// //       };
+//       this.websocket.onmessage = (event) => {
+//         try {
+//           const msg = JSON.parse(event.data) as SignalingMessage;
+//           void this.handleSignalingMessage(msg);
+//         } catch (e) {
+//           console.error("Invalid signaling message:", e);
+//         }
+//       };
 
-// //       this.websocket.onmessage = (event) => {
-// //         this.handleSignalingMessage(JSON.parse(event.data));
-// //       };
+//       this.websocket.onerror = (error) => {
+//         reject(error);
+//       };
+//     });
+//   }
 
-// //       this.websocket.onerror = (error) => {
-// //         reject(error);
-// //       };
-// //     });
-// //   }
+//   private setupPeerConnection(): void {
+//     const config: RTCConfiguration = {
+//       iceServers: [
+//         { urls: 'stun:stun.l.google.com:19302' },
+//         { urls: 'stun:stun1.l.google.com:19302' }
+//       ]
+//     };
 
-// //   private setupPeerConnection(): void {
-// //     const config: RTCConfiguration = {
-// //       iceServers: [
-// //         { urls: 'stun:stun.l.google.com:19302' },
-// //         { urls: 'stun:stun1.l.google.com:19302' }
-// //       ]
-// //     };
+//     this.peerConnection = new RTCPeerConnection(config);
 
-// //     this.peerConnection = new RTCPeerConnection(config);
+//     this.peerConnection.onicecandidate = (event) => {
+//       if (event.candidate && this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+//         const message: SignalingMessage = {
+//           type: 'ice-candidate',
+//           candidate: event.candidate.toJSON() // RTCIceCandidateInit 반환
+//         };
+//         const messageStr = JSON.stringify(message);
+//         this.websocket.send(messageStr);
+//       }
+//     };
 
-// //     this.peerConnection.onicecandidate = (event) => {
-// //       if (event.candidate && this.websocket?.readyState === WebSocket.OPEN) {
-// //         const message: SignalingMessage = {
-// //           type: 'ice-candidate',
-// //           candidate: event.candidate
-// //         };
+//     this.peerConnection.onconnectionstatechange = () => {
+//       const state = this.peerConnection?.connectionState;
+//       if (state === 'connected') {
+//         this.setState(WebRTCConnectionState.CONNECTED);
+//       } else if (state === 'failed' || state === 'disconnected' || state === 'closed') {
+//         this.setState(WebRTCConnectionState.DISCONNECTED);
+//       }
+//     };
 
-// //         // Fix: Ensure websocket exists and stringify message
-// //         const messageStr = JSON.stringify(message);
-// //         if (messageStr) {
-// //           this.websocket.send(messageStr);
-// //         }
-// //       }
-// //     };
+//     this.peerConnection.ondatachannel = (event) => {
+//       const channel = event.channel;
+//       this.attachDataChannelHandlers(channel);
+//     };
+//   }
 
-// //     this.peerConnection.onconnectionstatechange = () => {
-// //       const state = this.peerConnection?.connectionState;
-// //       if (state === 'connected') {
-// //         this.setState(WebRTCConnectionState.CONNECTED);
-// //       } else if (state === 'failed' || state === 'disconnected') {
-// //         this.setState(WebRTCConnectionState.DISCONNECTED);
-// //       }
-// //     };
+//   private attachDataChannelHandlers(channel: RTCDataChannel) {
+//     this.dataChannel = channel;
+//     this.dataChannel.onopen = () => console.log("Data channel opened");
+//     this.dataChannel.onmessage = (ev) => this.onMessage(ev.data);
+//     this.dataChannel.onclose = () => console.warn("Data channel closed");
+//     this.dataChannel.onerror = (err) => console.error("Data channel error:", err);
+//   }
 
-// //     this.peerConnection.ondatachannel = (event) => {
-// //       const channel = event.channel;
+//   private async createAndSendOffer(): Promise<void> {
+//     if (!this.peerConnection) return;
 
-// //       channel.onmessage = (messageEvent) => {
-// //         this.onMessage(messageEvent.data);
-// //       };
-// //     };
-// //   }
+//     if (!this.dataChannel) {
+//       const dc = this.peerConnection.createDataChannel('data');
+//       this.attachDataChannelHandlers(dc);
+//     }
 
-// //   private async joinRoom(): Promise<void> {
-// //     const joinMessage: SignalingMessage = {
-// //       type: 'join-room',
-// //       room: this.streamId
-// //     };
+//     const offer = await this.peerConnection.createOffer();
+//     await this.peerConnection.setLocalDescription(offer);
 
-// //     // Fix: Ensure websocket exists and stringify message
-// //     if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
-// //       const messageStr = JSON.stringify(joinMessage);
-// //       if (messageStr) {
-// //         this.websocket.send(messageStr);
-// //       }
-// //     }
-// //   }
+//     const offerMessage: SignalingMessage = {
+//       type: 'offer',
+//       sdp: offer.sdp ?? ""
+//     };
 
-// //   private async handleSignalingMessage(message: SignalingMessage): Promise<void> {
-// //     switch (message.type) {
-// //       case 'offer':
-// //         await this.handleOffer(message);
-// //         break;
-// //       case 'ice-candidate':
-// //         await this.handleIceCandidate(message);
-// //         break;
-// //     }
-// //   }
+//     if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+//       const messageStr = JSON.stringify(offerMessage);
+//       this.websocket.send(messageStr);
+//     }
+//   }
 
-// //   private async handleOffer(message: SignalingMessage): Promise<void> {
-// //     if (!this.peerConnection || !message.sdp) return;
+//   private async joinRoom(): Promise<void> {
+//     const joinMessage: SignalingMessage = {
+//       type: 'join-room',
+//       room: this.streamId
+//     };
 
-// //     await this.peerConnection.setRemoteDescription({
-// //       type: 'offer',
-// //       sdp: message.sdp
-// //     });
+//     if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+//       const messageStr = JSON.stringify(joinMessage);
+//       this.websocket.send(messageStr);
+//     }
+//   }
 
-// //     const answer = await this.peerConnection.createAnswer();
-// //     await this.peerConnection.setLocalDescription(answer);
+//   private async handleSignalingMessage(message: SignalingMessage): Promise<void> {
+//     const pc = this.peerConnection;
+//     if (!pc) return;
 
-// //     const answerMessage: SignalingMessage = {
-// //       type: 'answer',
-// //       sdp: answer.sdp!
-// //     };
+//     switch (message.type) {
+//       case 'start_connection':
+//         console.info("Received start_connection -> creating offer");
+//         await this.createAndSendOffer();
+//         break;
 
-// //     // Fix: Ensure websocket exists and stringify message
-// //     if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
-// //       const messageStr = JSON.stringify(answerMessage);
-// //       if (messageStr) {
-// //         this.websocket.send(messageStr);
-// //       }
-// //     }
-// //   }
+//       case 'offer':
+//         if (!message.sdp) return;
+//         await pc.setRemoteDescription({ type: 'offer', sdp: message.sdp });
 
-// //   private async handleIceCandidate(message: SignalingMessage): Promise<void> {
-// //     if (!this.peerConnection || !message.candidate) return;
-// //     await this.peerConnection.addIceCandidate(message.candidate);
-// //   }
+//         for (const candidate of this.pendingRemoteCandidates) {
+//           try {
+//             await pc.addIceCandidate(candidate);
+//           } catch (e) {
+//             console.warn(e);
+//           }
+//         }
+//         this.pendingRemoteCandidates = [];
 
-// //   private setState(newState: WebRTCConnectionState): void {
-// //     if (this.state !== newState) {
-// //       this.state = newState;
-// //       this.onStateChange(newState);
-// //     }
-// //   }
+//         const answer = await pc.createAnswer();
+//         await pc.setLocalDescription(answer);
 
-// //   async close(): Promise<void> {
-// //     if (this.dataChannel) {
-// //       this.dataChannel.close();
-// //     }
-// //     if (this.peerConnection) {
-// //       this.peerConnection.close();
-// //     }
-// //     if (this.websocket) {
-// //       this.websocket.close();
-// //     }
-// //   }
-// // }
+//         if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+//           const answerMessage = { type: 'answer', sdp: answer.sdp ?? "" };
+//           const messageStr = JSON.stringify(answerMessage);
+//           this.websocket.send(messageStr);
+//         }
+//         break;
+
+//       case 'answer':
+//         if (!message.sdp) return;
+//         await pc.setRemoteDescription({ type: 'answer', sdp: message.sdp });
+//         break;
+
+//       case 'ice-candidate':
+//         if (!message.candidate) return;
+//         try {
+//           if (pc.remoteDescription) {
+//             await pc.addIceCandidate(message.candidate);
+//           } else {
+//             this.pendingRemoteCandidates.push(message.candidate);
+//           }
+//         } catch (e) {
+//           console.warn("Failed to add ICE candidate:", e);
+//         }
+//         break;
+
+//       default:
+//         console.debug("Unhandled signaling message type:", message.type);
+//     }
+//   }
+
+//   private setState(newState: WebRTCConnectionState): void {
+//     if (this.state !== newState) {
+//       this.state = newState;
+//       this.onStateChange(newState);
+//     }
+//   }
+
+//   async close(): Promise<void> {
+//     this.dataChannel?.close();
+//     this.peerConnection?.close();
+//     this.websocket?.close();
+//   }
+// }
 
 // // // import { WebRTCConnectionState, SignalingMessage } from "./types";
 
@@ -436,21 +771,11 @@ export class WebRTCConnection {
 // // //           candidate: event.candidate
 // // //         };
 
-// // //         // ERROR in ./packages/studio-base/src/players/WebRTCPlayer/WebRTCConnection.ts:67:29
-// // //         // TS2769: No overload matches this call.
-// // //         //   Overload 1 of 2, '(data: string | Blob | ArrayBufferView | ArrayBufferLike): void', gave the following error.
-// // //         //     Argument of type 'string | undefined' is not assignable to parameter of type 'string | Blob | ArrayBufferView | ArrayBufferLike'.
-// // //         //   Overload 2 of 2, '(data: string | Blob | ArrayBufferView | ArrayBufferLike): void', gave the following error.
-// // //         //     Argument of type 'string | undefined' is not assignable to parameter of type 'string | Blob | ArrayBufferView | ArrayBufferLike'.
-// // //         //     65 |           candidate: event.candidate
-// // //         //     66 |         };
-// // //         //   > 67 |         this.websocket.send(JSON.stringify(message));
-// // //         //        |                             ^^^^^^^^^^^^^^^^^^^^^^^
-// // //         //     68 |       }
-// // //         //     69 |     };
-// // //         //     70 |
-
-// // //         this.websocket.send(JSON.stringify(message));
+// // //         // Fix: Ensure websocket exists and stringify message
+// // //         const messageStr = JSON.stringify(message);
+// // //         if (messageStr) {
+// // //           this.websocket.send(messageStr);
+// // //         }
 // // //       }
 // // //     };
 
@@ -478,22 +803,13 @@ export class WebRTCConnection {
 // // //       room: this.streamId
 // // //     };
 
-// // //     // ERROR in ./packages/studio-base/src/players/WebRTCPlayer/WebRTCConnection.ts:95:26
-// // //     // TS2769: No overload matches this call.
-// // //     //   Overload 1 of 2, '(data: string | Blob | ArrayBufferView | ArrayBufferLike): void | undefined', gave the following error.
-// // //     //     Argument of type 'string | undefined' is not assignable to parameter of type 'string | Blob | ArrayBufferView | ArrayBufferLike'.
-// // //     //       Type 'undefined' is not assignable to type 'string | Blob | ArrayBufferView | ArrayBufferLike'.
-// // //     //   Overload 2 of 2, '(data: string | Blob | ArrayBufferView | ArrayBufferLike): void | undefined', gave the following error.
-// // //     //     Argument of type 'string | undefined' is not assignable to parameter of type 'string | Blob | ArrayBufferView | ArrayBufferLike'.
-// // //     //     93 |     };
-// // //     //     94 |
-// // //     //   > 95 |     this.websocket?.send(JSON.stringify(joinMessage));
-// // //     //       |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-// // //     //     96 |   }
-// // //     //     97 |
-// // //     //     98 |   private async handleSignalingMessage(message: SignalingMessage): Promise<void> {
-
-// // //     this.websocket?.send(JSON.stringify(joinMessage));
+// // //     // Fix: Ensure websocket exists and stringify message
+// // //     if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+// // //       const messageStr = JSON.stringify(joinMessage);
+// // //       if (messageStr) {
+// // //         this.websocket.send(messageStr);
+// // //       }
+// // //     }
 // // //   }
 
 // // //   private async handleSignalingMessage(message: SignalingMessage): Promise<void> {
@@ -523,21 +839,13 @@ export class WebRTCConnection {
 // // //       sdp: answer.sdp!
 // // //     };
 
-// // //     // ERROR in ./packages/studio-base/src/players/WebRTCPlayer/WebRTCConnection.ts:124:26
-// // //     // TS2769: No overload matches this call.
-// // //     //   Overload 1 of 2, '(data: string | Blob | ArrayBufferView | ArrayBufferLike): void | undefined', gave the following error.
-// // //     //     Argument of type 'string | undefined' is not assignable to parameter of type 'string | Blob | ArrayBufferView | ArrayBufferLike'.
-// // //     //   Overload 2 of 2, '(data: string | Blob | ArrayBufferView | ArrayBufferLike): void | undefined', gave the following error.
-// // //     //     Argument of type 'string | undefined' is not assignable to parameter of type 'string | Blob | ArrayBufferView | ArrayBufferLike'.
-// // //     //     122 |       sdp: answer.sdp!
-// // //     //     123 |     };
-// // //     //   > 124 |     this.websocket?.send(JSON.stringify(answerMessage));
-// // //     //         |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-// // //     //     125 |   }
-// // //     //     126 |
-// // //     //     127 |   private async handleIceCandidate(message: SignalingMessage): Promise<void> {
-
-// // //     this.websocket?.send(JSON.stringify(answerMessage));
+// // //     // Fix: Ensure websocket exists and stringify message
+// // //     if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+// // //       const messageStr = JSON.stringify(answerMessage);
+// // //       if (messageStr) {
+// // //         this.websocket.send(messageStr);
+// // //       }
+// // //     }
 // // //   }
 
 // // //   private async handleIceCandidate(message: SignalingMessage): Promise<void> {
@@ -564,3 +872,199 @@ export class WebRTCConnection {
 // // //     }
 // // //   }
 // // // }
+
+// // // // import { WebRTCConnectionState, SignalingMessage } from "./types";
+
+// // // // export class WebRTCConnection {
+// // // //   private websocket?: WebSocket;
+// // // //   private peerConnection?: RTCPeerConnection;
+// // // //   private dataChannel?: RTCDataChannel;
+// // // //   private state: WebRTCConnectionState = WebRTCConnectionState.DISCONNECTED;
+
+// // // //   constructor(
+// // // //     private signalingUrl: string,
+// // // //     private streamId: string,
+// // // //     private onMessage: (data: any) => void,
+// // // //     private onStateChange: (state: WebRTCConnectionState) => void
+// // // //   ) {}
+
+// // // //   async connect(): Promise<boolean> {
+// // // //     try {
+// // // //       this.setState(WebRTCConnectionState.CONNECTING);
+
+// // // //       await this.connectToSignalingServer();
+// // // //       this.setupPeerConnection();
+// // // //       await this.joinRoom();
+
+// // // //       return true;
+// // // //     } catch (error) {
+// // // //       console.error("WebRTC connection failed:", error);
+// // // //       this.setState(WebRTCConnectionState.FAILED);
+// // // //       return false;
+// // // //     }
+// // // //   }
+
+// // // //   private async connectToSignalingServer(): Promise<void> {
+// // // //     return new Promise((resolve, reject) => {
+// // // //       this.websocket = new WebSocket(this.signalingUrl);
+
+// // // //       this.websocket.onopen = () => {
+// // // //         console.log("Connected to signaling server");
+// // // //         resolve();
+// // // //       };
+
+// // // //       this.websocket.onmessage = (event) => {
+// // // //         this.handleSignalingMessage(JSON.parse(event.data));
+// // // //       };
+
+// // // //       this.websocket.onerror = (error) => {
+// // // //         reject(error);
+// // // //       };
+// // // //     });
+// // // //   }
+
+// // // //   private setupPeerConnection(): void {
+// // // //     const config: RTCConfiguration = {
+// // // //       iceServers: [
+// // // //         { urls: 'stun:stun.l.google.com:19302' },
+// // // //         { urls: 'stun:stun1.l.google.com:19302' }
+// // // //       ]
+// // // //     };
+
+// // // //     this.peerConnection = new RTCPeerConnection(config);
+
+// // // //     this.peerConnection.onicecandidate = (event) => {
+// // // //       if (event.candidate && this.websocket?.readyState === WebSocket.OPEN) {
+// // // //         const message: SignalingMessage = {
+// // // //           type: 'ice-candidate',
+// // // //           candidate: event.candidate
+// // // //         };
+
+// // // //         // ERROR in ./packages/studio-base/src/players/WebRTCPlayer/WebRTCConnection.ts:67:29
+// // // //         // TS2769: No overload matches this call.
+// // // //         //   Overload 1 of 2, '(data: string | Blob | ArrayBufferView | ArrayBufferLike): void', gave the following error.
+// // // //         //     Argument of type 'string | undefined' is not assignable to parameter of type 'string | Blob | ArrayBufferView | ArrayBufferLike'.
+// // // //         //   Overload 2 of 2, '(data: string | Blob | ArrayBufferView | ArrayBufferLike): void', gave the following error.
+// // // //         //     Argument of type 'string | undefined' is not assignable to parameter of type 'string | Blob | ArrayBufferView | ArrayBufferLike'.
+// // // //         //     65 |           candidate: event.candidate
+// // // //         //     66 |         };
+// // // //         //   > 67 |         this.websocket.send(JSON.stringify(message));
+// // // //         //        |                             ^^^^^^^^^^^^^^^^^^^^^^^
+// // // //         //     68 |       }
+// // // //         //     69 |     };
+// // // //         //     70 |
+
+// // // //         this.websocket.send(JSON.stringify(message));
+// // // //       }
+// // // //     };
+
+// // // //     this.peerConnection.onconnectionstatechange = () => {
+// // // //       const state = this.peerConnection?.connectionState;
+// // // //       if (state === 'connected') {
+// // // //         this.setState(WebRTCConnectionState.CONNECTED);
+// // // //       } else if (state === 'failed' || state === 'disconnected') {
+// // // //         this.setState(WebRTCConnectionState.DISCONNECTED);
+// // // //       }
+// // // //     };
+
+// // // //     this.peerConnection.ondatachannel = (event) => {
+// // // //       const channel = event.channel;
+
+// // // //       channel.onmessage = (messageEvent) => {
+// // // //         this.onMessage(messageEvent.data);
+// // // //       };
+// // // //     };
+// // // //   }
+
+// // // //   private async joinRoom(): Promise<void> {
+// // // //     const joinMessage: SignalingMessage = {
+// // // //       type: 'join-room',
+// // // //       room: this.streamId
+// // // //     };
+
+// // // //     // ERROR in ./packages/studio-base/src/players/WebRTCPlayer/WebRTCConnection.ts:95:26
+// // // //     // TS2769: No overload matches this call.
+// // // //     //   Overload 1 of 2, '(data: string | Blob | ArrayBufferView | ArrayBufferLike): void | undefined', gave the following error.
+// // // //     //     Argument of type 'string | undefined' is not assignable to parameter of type 'string | Blob | ArrayBufferView | ArrayBufferLike'.
+// // // //     //       Type 'undefined' is not assignable to type 'string | Blob | ArrayBufferView | ArrayBufferLike'.
+// // // //     //   Overload 2 of 2, '(data: string | Blob | ArrayBufferView | ArrayBufferLike): void | undefined', gave the following error.
+// // // //     //     Argument of type 'string | undefined' is not assignable to parameter of type 'string | Blob | ArrayBufferView | ArrayBufferLike'.
+// // // //     //     93 |     };
+// // // //     //     94 |
+// // // //     //   > 95 |     this.websocket?.send(JSON.stringify(joinMessage));
+// // // //     //       |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+// // // //     //     96 |   }
+// // // //     //     97 |
+// // // //     //     98 |   private async handleSignalingMessage(message: SignalingMessage): Promise<void> {
+
+// // // //     this.websocket?.send(JSON.stringify(joinMessage));
+// // // //   }
+
+// // // //   private async handleSignalingMessage(message: SignalingMessage): Promise<void> {
+// // // //     switch (message.type) {
+// // // //       case 'offer':
+// // // //         await this.handleOffer(message);
+// // // //         break;
+// // // //       case 'ice-candidate':
+// // // //         await this.handleIceCandidate(message);
+// // // //         break;
+// // // //     }
+// // // //   }
+
+// // // //   private async handleOffer(message: SignalingMessage): Promise<void> {
+// // // //     if (!this.peerConnection || !message.sdp) return;
+
+// // // //     await this.peerConnection.setRemoteDescription({
+// // // //       type: 'offer',
+// // // //       sdp: message.sdp
+// // // //     });
+
+// // // //     const answer = await this.peerConnection.createAnswer();
+// // // //     await this.peerConnection.setLocalDescription(answer);
+
+// // // //     const answerMessage: SignalingMessage = {
+// // // //       type: 'answer',
+// // // //       sdp: answer.sdp!
+// // // //     };
+
+// // // //     // ERROR in ./packages/studio-base/src/players/WebRTCPlayer/WebRTCConnection.ts:124:26
+// // // //     // TS2769: No overload matches this call.
+// // // //     //   Overload 1 of 2, '(data: string | Blob | ArrayBufferView | ArrayBufferLike): void | undefined', gave the following error.
+// // // //     //     Argument of type 'string | undefined' is not assignable to parameter of type 'string | Blob | ArrayBufferView | ArrayBufferLike'.
+// // // //     //   Overload 2 of 2, '(data: string | Blob | ArrayBufferView | ArrayBufferLike): void | undefined', gave the following error.
+// // // //     //     Argument of type 'string | undefined' is not assignable to parameter of type 'string | Blob | ArrayBufferView | ArrayBufferLike'.
+// // // //     //     122 |       sdp: answer.sdp!
+// // // //     //     123 |     };
+// // // //     //   > 124 |     this.websocket?.send(JSON.stringify(answerMessage));
+// // // //     //         |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+// // // //     //     125 |   }
+// // // //     //     126 |
+// // // //     //     127 |   private async handleIceCandidate(message: SignalingMessage): Promise<void> {
+
+// // // //     this.websocket?.send(JSON.stringify(answerMessage));
+// // // //   }
+
+// // // //   private async handleIceCandidate(message: SignalingMessage): Promise<void> {
+// // // //     if (!this.peerConnection || !message.candidate) return;
+// // // //     await this.peerConnection.addIceCandidate(message.candidate);
+// // // //   }
+
+// // // //   private setState(newState: WebRTCConnectionState): void {
+// // // //     if (this.state !== newState) {
+// // // //       this.state = newState;
+// // // //       this.onStateChange(newState);
+// // // //     }
+// // // //   }
+
+// // // //   async close(): Promise<void> {
+// // // //     if (this.dataChannel) {
+// // // //       this.dataChannel.close();
+// // // //     }
+// // // //     if (this.peerConnection) {
+// // // //       this.peerConnection.close();
+// // // //     }
+// // // //     if (this.websocket) {
+// // // //       this.websocket.close();
+// // // //     }
+// // // //   }
+// // // // }
