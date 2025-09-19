@@ -1,7 +1,6 @@
-// Enhanced WebRTC Connection Handler with Fixed Type Safety
-// This module manages WebRTC peer connections, signaling, and data channel communication
+// WebRTCConnection.ts - 수정된 완전한 코드
 
-import { WebRTCConnectionState, SignalingMessage, WebRTCConnectionConfig, DataChannelConfig } from "./types";
+import { WebRTCConnectionState, SignalingMessage } from "./types";
 
 export class WebRTCConnection {
   private websocket?: WebSocket;
@@ -17,22 +16,8 @@ export class WebRTCConnection {
     private signalingUrl: string,
     private streamId: string,
     private onMessage: (data: any) => void,
-    private onStateChange: (state: WebRTCConnectionState) => void,
-    private config: WebRTCConnectionConfig = {
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' }
-      ],
-      iceCandidatePoolSize: 10
-    },
-    private dataChannelConfig: DataChannelConfig = {
-      ordered: true,
-      maxRetransmits: 3
-    }
-  ) {
-    // Configuration is set via default parameters
-  }
+    private onStateChange: (state: WebRTCConnectionState) => void
+  ) {}
 
   async connect(): Promise<boolean> {
     if (this.connectionAttempts >= this.maxConnectionAttempts) {
@@ -125,7 +110,16 @@ export class WebRTCConnection {
       this.peerConnection.close();
     }
 
-    this.peerConnection = new RTCPeerConnection(this.config);
+    const config: RTCConfiguration = {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' }
+      ],
+      iceCandidatePoolSize: 10
+    };
+
+    this.peerConnection = new RTCPeerConnection(config);
 
     // Set up connection state monitoring
     this.peerConnection.onconnectionstatechange = () => {
@@ -195,7 +189,7 @@ export class WebRTCConnection {
       console.log(`ICE gathering state: ${gatheringState}`);
     };
 
-    // Data channel handling
+    // Data channel handling - Foxglove receives the data channel from the offerer
     this.peerConnection.ondatachannel = (event) => {
       const channel = event.channel;
       console.log(`Received data channel: ${channel.label}`);
@@ -251,45 +245,6 @@ export class WebRTCConnection {
     };
   }
 
-  // private async createAndSendOffer(): Promise<void> {
-  //   if (!this.peerConnection) {
-  //     throw new Error("Peer connection not initialized");
-  //   }
-
-  //   try {
-  //     // Create data channel if it doesn't exist (for offerer)
-  //     if (!this.dataChannel) {
-  //       const dc = this.peerConnection.createDataChannel('data', this.dataChannelConfig);
-  //       this.attachDataChannelHandlers(dc);
-  //     }
-
-  //     const offer = await this.peerConnection.createOffer({
-  //       offerToReceiveAudio: false,
-  //       offerToReceiveVideo: false
-  //     });
-
-  //     await this.peerConnection.setLocalDescription(offer);
-
-  //     const offerMessage: SignalingMessage = {
-  //       type: 'offer',
-  //       sdp: offer.sdp || ""
-  //     };
-
-  //     if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
-  //       const messageStr = JSON.stringify(offerMessage);
-  //       if (messageStr) { // Ensure string is not empty
-  //         this.websocket.send(messageStr);
-  //         console.log("Offer sent successfully");
-  //       }
-  //     } else {
-  //       throw new Error("WebSocket not ready for sending offer");
-  //     }
-  //   } catch (error) {
-  //     console.error("Error creating or sending offer:", error);
-  //     throw error;
-  //   }
-  // }
-
   private async joinRoom(): Promise<void> {
     const joinMessage: SignalingMessage = {
       type: 'join-room',
@@ -317,7 +272,9 @@ export class WebRTCConnection {
     try {
       switch (message.type) {
         case 'start_connection':
-          console.info("Received start_connection signal, waiting for offer...");
+          // Foxglove is the answerer, so it waits for an offer
+          console.info("Received start_connection signal - waiting for offer from peer");
+          // Do NOT create an offer here - wait for the offer from the Python client
           break;
 
         case 'offer':
@@ -358,24 +315,8 @@ export class WebRTCConnection {
           break;
 
         case 'answer':
-          if (!message.sdp) {
-            console.error("Received answer without SDP");
-            return;
-          }
-
-          console.log("Processing answer from peer");
-          await pc.setRemoteDescription({ type: 'answer', sdp: message.sdp });
-
-          // Process any buffered ICE candidates
-          for (const candidate of this.pendingRemoteCandidates) {
-            try {
-              await pc.addIceCandidate(candidate);
-              console.debug("Added buffered ICE candidate");
-            } catch (e) {
-              console.warn("Failed to add buffered ICE candidate:", e);
-            }
-          }
-          this.pendingRemoteCandidates = [];
+          // Foxglove shouldn't receive answers since it's the answerer
+          console.warn("Received unexpected answer (Foxglove is answerer role)");
           break;
 
         case 'ice-candidate':
@@ -507,7 +448,6 @@ export class WebRTCConnection {
     console.log("WebRTC connection closed and resources cleaned up");
   }
 }
-
 
 
 
