@@ -400,12 +400,15 @@ export class MessageProcessor {
                     scanIndex
                 );
 
-                messages.push(this.createMessage(
-                    this.topicMappings.radar[corner],
-                    'sensor_msgs/PointCloud2',
-                    pointCloud,
-                    timestamp
-                ));
+                const topic = this.topicMappings.radar[corner];
+                if (topic) {
+                    messages.push(this.createMessage(
+                        topic,
+                        'sensor_msgs/PointCloud2',
+                        pointCloud,
+                        timestamp
+                    ));
+                }
             }
         }
 
@@ -424,7 +427,7 @@ export class MessageProcessor {
 
         for (let i = 0; i < maxPoints; i++) {
             const rangeKey = `${corner}__Range_${i}`;
-            const velocityKey = `${corner}__Velocity_${i}`;
+            // const velocityKey = `${corner}__Velocity_${i}`;  // Reserved for future use
             const aziKey = `${corner}__AziAng_${i}`;
             const eleKey = `${corner}__EleAng_${i}`;
             const powerKey = `${corner}__Power_${i}`;

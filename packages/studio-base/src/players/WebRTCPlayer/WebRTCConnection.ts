@@ -358,7 +358,9 @@ export class WebRTCConnection {
 
         if (this.websocket?.readyState === WebSocket.OPEN) {
             const messageStr = JSON.stringify(joinMessage);
-            this.websocket.send(messageStr);
+            if (messageStr) {
+                this.websocket.send(messageStr);
+            }
             console.log(`[WebRTC] Joining room as consumer: ${this.config.streamId}`);
         } else {
             throw new Error("WebSocket not ready for joining room");
@@ -476,7 +478,9 @@ export class WebRTCConnection {
             };
 
             const messageStr = JSON.stringify(answerMessage);
-            this.websocket.send(messageStr);
+            if (messageStr) {
+                this.websocket.send(messageStr);
+            }
             console.log("[WebRTC] Answer sent to producer");
         }
     }
@@ -552,7 +556,9 @@ export class WebRTCConnection {
         try {
             if (this.websocket?.readyState === WebSocket.OPEN) {
                 const messageStr = JSON.stringify(message);
-                this.websocket.send(messageStr);
+                if (messageStr) {
+                    this.websocket.send(messageStr);
+                }
                 this.stats.iceCandidatesSent++;
                 console.debug(`[WebRTC] ICE candidate sent (${this.stats.iceCandidatesSent} total)`);
             }
@@ -652,7 +658,9 @@ export class WebRTCConnection {
         const sendPing = () => {
             if (this.websocket?.readyState === WebSocket.OPEN) {
                 const pingMessage = JSON.stringify({ type: 'ping' });
-                this.websocket.send(pingMessage);
+                if (pingMessage) {
+                    this.websocket.send(pingMessage);
+                }
             }
         };
 

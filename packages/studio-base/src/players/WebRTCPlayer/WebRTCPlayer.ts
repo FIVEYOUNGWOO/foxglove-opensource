@@ -37,13 +37,6 @@ interface PlayerStatistics {
     processingErrors: number;
 }
 
-interface TopicStatistics {
-    messageCount: number;
-    bytesReceived: number;
-    lastMessageTime: number;
-    frequency: number;
-}
-
 export default class WebRTCPlayer implements Player {
     private readonly _id: string = uuidv4();
     private _listener?: (playerState: PlayerState) => Promise<void>;
@@ -459,7 +452,7 @@ export default class WebRTCPlayer implements Player {
         }, 10000); // Every 10 seconds
     }
 
-    private addProblem(id: string, message: string, severity: "warn" | "error" = "warn"): void {
+    private addProblem(_id: string, message: string, severity: "warn" | "error" = "warn"): void {
         /**
          * Add problem to player state
          * Input: Problem details
