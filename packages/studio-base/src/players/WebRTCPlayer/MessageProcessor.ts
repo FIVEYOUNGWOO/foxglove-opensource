@@ -73,7 +73,7 @@ export class MessageProcessor {
     private processingTimes: number[] = [];
     private readonly maxProcessingTimeSamples = 100;
 
-    // Topic mapping for sensor data
+    // Topic mapping for sensor data with index signatures
     private readonly topicMappings = {
         can: {
             'scan_index': '/vehicle/can/scan_index',
@@ -81,7 +81,7 @@ export class MessageProcessor {
             'cycle_time': '/vehicle/can/cycle_time',
             'speed': '/vehicle/speed',
             'rpm': '/vehicle/rpm'
-        },
+        } as Record<string, string>,
         camera: {
             'camera_1': '/camera/cam_1/image_raw/compressed',
             'camera_2': '/camera/cam_2/image_raw/compressed',
@@ -89,13 +89,13 @@ export class MessageProcessor {
             'camera_4': '/camera/cam_4/image_raw/compressed',
             'camera_5': '/camera/cam_5/image_raw/compressed',
             'camera_6': '/camera/cam_6/image_raw/compressed'
-        },
+        } as Record<string, string>,
         radar: {
             'FL': '/radar_points_3d/fl',
             'FR': '/radar_points_3d/fr',
             'RL': '/radar_points_3d/rl',
             'RR': '/radar_points_3d/rr'
-        }
+        } as Record<string, string>
     };
 
     /**
@@ -433,7 +433,7 @@ export class MessageProcessor {
             if (!(rangeKey in sensorData)) break;
 
             const range = parseFloat(sensorData[rangeKey] || 0);
-            const velocity = parseFloat(sensorData[velocityKey] || 0);
+            // const velocity = parseFloat(sensorData[velocityKey] || 0); // Reserved for future use
             const azimuth = parseFloat(sensorData[aziKey] || 0);
             const elevation = parseFloat(sensorData[eleKey] || 0);
             const power = parseFloat(sensorData[powerKey] || 0);
@@ -478,11 +478,13 @@ export class MessageProcessor {
         const dataArray = new Float32Array(points.length * 4);
 
         for (let i = 0; i < points.length; i++) {
+            const point = points[i];
+            if (!point) continue;
             const offset = i * 4;
-            dataArray[offset] = points[i].x;
-            dataArray[offset + 1] = points[i].y;
-            dataArray[offset + 2] = points[i].z;
-            dataArray[offset + 3] = points[i].intensity;
+            dataArray[offset] = point.x;
+            dataArray[offset + 1] = point.y;
+            dataArray[offset + 2] = point.z;
+            dataArray[offset + 3] = point.intensity;
         }
 
         return {
@@ -502,7 +504,7 @@ export class MessageProcessor {
             is_bigendian: false,
             point_step: pointStep,
             row_step: rowStep,
-            data: Array.from(dataArray.buffer),
+            data: Array.from(new Uint8Array(dataArray.buffer)),
             is_dense: true
         };
     }

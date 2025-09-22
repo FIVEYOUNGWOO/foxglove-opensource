@@ -19,6 +19,7 @@ import {
     AdvertiseOptions,
     PublishPayload,
     PlayerProblem,
+    TopicStats
 } from "@foxglove/studio-base/players/types";
 import { Time } from "@foxglove/rostime";
 import { ParameterValue } from "@foxglove/studio";
@@ -59,7 +60,7 @@ export default class WebRTCPlayer implements Player {
 
     // Topic management
     private _topics: Topic[] = [];
-    private _datatypes: Map<string, string> = new Map();
+    private _datatypes: Map<string, any> = new Map();
     private _subscriptions: Map<string, SubscribePayload> = new Map();
     private _advertisedTopics: Map<string, AdvertiseOptions> = new Map();
 
@@ -80,7 +81,7 @@ export default class WebRTCPlayer implements Player {
         processingErrors: 0
     };
 
-    private _topicStats: Map<string, TopicStatistics> = new Map();
+    private _topicStats: Map<string, TopicStats> = new Map();
     private _problems: PlayerProblem[] = [];
 
     // Timing
@@ -275,25 +276,15 @@ export default class WebRTCPlayer implements Player {
 
         if (!this._topicStats.has(topicName)) {
             this._topicStats.set(topicName, {
-                messageCount: 0,
-                bytesReceived: 0,
-                lastMessageTime: 0,
-                frequency: 0
+                numMessages: 0,
+                firstMessageTime: message.receiveTime,
+                lastMessageTime: message.receiveTime
             });
         }
 
         const stats = this._topicStats.get(topicName)!;
-        const now = Date.now();
-
-        // Calculate frequency
-        if (stats.lastMessageTime > 0) {
-            const timeDiff = (now - stats.lastMessageTime) / 1000;
-            stats.frequency = stats.frequency * 0.9 + (1 / timeDiff) * 0.1; // Exponential moving average
-        }
-
-        stats.messageCount++;
-        stats.bytesReceived += message.sizeInBytes;
-        stats.lastMessageTime = now;
+        stats.numMessages++;
+        stats.lastMessageTime = message.receiveTime;
 
         this._playerStats.totalBytesReceived += message.sizeInBytes;
     }
@@ -407,9 +398,9 @@ export default class WebRTCPlayer implements Player {
                 lastSeekTime: 0,
                 topics: this._topics,
                 topicStats: this._topicStats,
-                datatypes: this._datatypes,
-                publishedTopics: this._advertisedTopics,
-                subscribedTopics: this._subscriptions,
+                datatypes: new Map(),  // RosDatatypes requires specific format
+                publishedTopics: new Map(),  // Map<string, Set<string>>
+                subscribedTopics: new Map(),  // Map<string, Set<string>>
                 services: new Map(),
                 parameters: new Map()
             },
@@ -455,7 +446,7 @@ export default class WebRTCPlayer implements Player {
                     state: this.connectionState,
                     messagesReceived: stats.messagesReceived,
                     bytesReceived: stats.bytesReceived,
-                    uptime: Math.round(stats.connectionUptime / 1000) + "s"
+                    uptime: Math.round((Date.now() - stats.connectionStartTime) / 1000) + "s"
                 },
                 processing: processingStats,
                 player: {
@@ -476,7 +467,6 @@ export default class WebRTCPlayer implements Player {
          * Purpose: Track and report issues
          */
         const problem: PlayerProblem = {
-            id,
             message,
             severity,
             tip: severity === "error"
@@ -484,8 +474,8 @@ export default class WebRTCPlayer implements Player {
                 : "System is attempting to recover automatically"
         };
 
-        // Remove existing problem with same ID
-        this._problems = this._problems.filter(p => p.id !== id);
+        // Remove existing problems with same message
+        this._problems = this._problems.filter(p => p.message !== message);
         this._problems.push(problem);
 
         console.warn(`[WebRTCPlayer] Problem added: ${message}`);
@@ -593,7 +583,7 @@ export default class WebRTCPlayer implements Player {
         console.log(`[WebRTCPlayer] Parameter set: ${key} = ${value}`);
     }
 
-    publish(payload: PublishPayload): void {
+    publish(_payload: PublishPayload): void {
         /**
          * Publish message (not supported in receive-only mode)
          * Input: Publish payload
@@ -659,7 +649,7 @@ export default class WebRTCPlayer implements Player {
         this.emitState();
     }
 
-    seekPlayback(time: Time): void {
+    seekPlayback(_time: Time): void {
         /**
          * Seek to time (not supported for real-time)
          * Input: Target time

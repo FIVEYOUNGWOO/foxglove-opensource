@@ -7,7 +7,24 @@
  * Output: Processed sensor data to Foxglove visualization
  */
 
-import { WebRTCConnectionState, SignalingMessage } from "./types";
+import { WebRTCConnectionState } from "./types";
+
+// Extended SignalingMessage interface
+interface SignalingMessage {
+    type: 'offer' | 'answer' | 'ice-candidate' | 'join-room' | 'peer-list' |
+          'error' | 'start_connection' | 'peer_state_change' | 'peer_disconnected' |
+          'role_assigned' | 'joined' | 'wait_for_offer' | 'pong' | 'ping' | 'join';
+    data?: any;
+    sdp?: string;
+    candidate?: RTCIceCandidateInit;
+    room?: string;
+    peerId?: string;
+    peers?: string[];
+    error?: string;
+    peer_id?: string;
+    your_role?: string;
+    state?: string;
+}
 
 interface ConnectionConfig {
     signalingUrl: string;
@@ -56,7 +73,7 @@ export class WebRTCConnection {
     // Configuration
     private readonly config: ConnectionConfig;
     private clientId?: string;
-    private pairedProducerId?: string;
+    // private pairedProducerId?: string; // Reserved for future use
 
     constructor(
         signalingUrl: string,
@@ -340,7 +357,8 @@ export class WebRTCConnection {
         };
 
         if (this.websocket?.readyState === WebSocket.OPEN) {
-            this.websocket.send(JSON.stringify(joinMessage));
+            const messageStr = JSON.stringify(joinMessage);
+            this.websocket.send(messageStr);
             console.log(`[WebRTC] Joining room as consumer: ${this.config.streamId}`);
         } else {
             throw new Error("WebSocket not ready for joining room");
@@ -374,7 +392,7 @@ export class WebRTCConnection {
 
                 case 'wait_for_offer':
                     console.info("[WebRTC] Waiting for offer from producer...");
-                    this.pairedProducerId = message.data?.source_id;
+                    // this.pairedProducerId = message.data?.source_id;
                     break;
 
                 case 'offer':
@@ -457,7 +475,8 @@ export class WebRTCConnection {
                 sdp: answer.sdp || ""
             };
 
-            this.websocket.send(JSON.stringify(answerMessage));
+            const messageStr = JSON.stringify(answerMessage);
+            this.websocket.send(messageStr);
             console.log("[WebRTC] Answer sent to producer");
         }
     }
@@ -532,7 +551,8 @@ export class WebRTCConnection {
 
         try {
             if (this.websocket?.readyState === WebSocket.OPEN) {
-                this.websocket.send(JSON.stringify(message));
+                const messageStr = JSON.stringify(message);
+                this.websocket.send(messageStr);
                 this.stats.iceCandidatesSent++;
                 console.debug(`[WebRTC] ICE candidate sent (${this.stats.iceCandidatesSent} total)`);
             }
@@ -631,7 +651,8 @@ export class WebRTCConnection {
 
         const sendPing = () => {
             if (this.websocket?.readyState === WebSocket.OPEN) {
-                this.websocket.send(JSON.stringify({ type: 'ping' }));
+                const pingMessage = JSON.stringify({ type: 'ping' });
+                this.websocket.send(pingMessage);
             }
         };
 
@@ -674,12 +695,7 @@ export class WebRTCConnection {
          * Output: Statistics object
          * Purpose: Monitor connection performance
          */
-        return {
-            ...this.stats,
-            connectionUptime: this.stats.connectionStartTime
-                ? Date.now() - this.stats.connectionStartTime
-                : 0
-        };
+        return { ...this.stats };
     }
 
     public isReady(): boolean {
