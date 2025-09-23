@@ -13,6 +13,7 @@ import {
     PublishPayload,
     TopicStats,
     PlayerProblem,
+    RosDatatypes,
 } from "@foxglove/studio-base/players/types";
 import { Time } from "@foxglove/rostime";
 import { ParameterValue } from "@foxglove/studio";
@@ -34,7 +35,8 @@ export default class WebRTCPlayer implements Player {
     private _problems: PlayerProblem[] = [];
 
     private _topics: Topic[] = [];
-    private _datatypes: Map<string, unknown> = new Map();
+    // [수정] RosDatatypes 타입과 호환되도록 맵의 값 타입을 명확하게 지정합니다.
+    private _datatypes: RosDatatypes = new Map();
     private _subscriptions: Map<string, SubscribePayload> = new Map();
     private _messageQueue: MessageEvent<unknown>[] = [];
     private _topicStats: Map<string, TopicStats> = new Map();
@@ -83,6 +85,7 @@ export default class WebRTCPlayer implements Player {
                 console.log(`[WebRTCPlayer] Discovered new topic: ${message.topic} (${message.schemaName})`);
                 this._topics.push({ name: message.topic, schemaName: message.schemaName });
                 if (!this._datatypes.has(message.schemaName)) {
+                    // [수정] RosDatatypes 타입에 맞는 객체를 할당합니다.
                     this._datatypes.set(message.schemaName, { definitions: [] });
                 }
                 newTopicsFound = true;

@@ -3,18 +3,16 @@
 import { MessageEvent } from "@foxglove/studio-base/players/types";
 import { Time } from "@foxglove/rostime";
 
-// Producer가 보내는 데이터 구조에 대한 인터페이스 정의
 interface SensorDataMessage {
     type: 'sensor_update';
     scan_index: number;
     timestamp: number;
     can_data?: Record<string, any>;
     camera_data?: Record<string, string>;
-    [key: string]: any; // 다른 데이터가 포함될 수 있도록 유연하게 정의
+    [key: string]: any;
 }
 
 export class MessageProcessor {
-    // Producer -> Consumer 토픽 이름 매핑
     private readonly topicMappings = {
         camera: {
             'camera_1': '/camera/cam_1/image_raw/compressed',
@@ -34,17 +32,13 @@ export class MessageProcessor {
 
     public processMessage(data: string | ArrayBuffer | ArrayBufferView): MessageEvent<unknown>[] {
         try {
-            // [수정] WebRTC는 자동으로 재조립하므로, 청크 확인 로직 제거하고 바로 JSON 파싱
             const textData = (typeof data === 'string') ? data : new TextDecoder().decode(data);
             const parsedData = JSON.parse(textData) as SensorDataMessage;
 
             if (parsedData && parsedData.type === 'sensor_update') {
                 return this.processSensorDataMessage(parsedData);
             }
-
-            console.warn("[MessageProcessor] Received message of unknown type:", parsedData?.type);
             return [];
-
         } catch (error) {
             console.error("[MessageProcessor] Failed to parse message:", error);
             return [];
@@ -64,8 +58,6 @@ export class MessageProcessor {
         if (sensorData.camera_data) {
             messages.push(...this.processCameraData(sensorData.camera_data, baseTimestamp, scanIndex));
         }
-
-        // Radar 데이터는 can_data 내에 포함되어 있으므로 can_data를 넘겨줍니다.
         if (sensorData.can_data) {
             messages.push(...this.extractRadarData(sensorData.can_data, baseTimestamp, scanIndex));
         }
@@ -75,10 +67,8 @@ export class MessageProcessor {
 
     private processCanData(canData: Record<string, any>, timestamp: Time): MessageEvent<unknown>[] {
         const messages: MessageEvent<unknown>[] = [];
-        // can_data 객체 내의 모든 신호를 동적으로 토픽으로 변환
         for (const [signalName, value] of Object.entries(canData)) {
             const topic = `/vehicle/can/raw/${signalName}`;
-            // ROS 메시지 타입 추론 (더 정교한 로직 추가 가능)
             let schemaName = 'std_msgs/Float64';
             if (Number.isInteger(value)) {
                 schemaName = 'std_msgs/Int32';
@@ -94,10 +84,8 @@ export class MessageProcessor {
         const messages: MessageEvent<unknown>[] = [];
         for (const [cameraKey, imageData] of Object.entries(cameraData)) {
             if (!imageData) continue;
-
             const topic = this.topicMappings.camera[cameraKey];
             if (!topic) continue;
-
             const cameraMessage = {
                 header: { stamp: timestamp, frame_id: cameraKey, seq: scanIndex },
                 format: 'jpeg',
@@ -110,9 +98,7 @@ export class MessageProcessor {
 
     private extractRadarData(canData: any, timestamp: Time, scanIndex: number): MessageEvent<unknown>[] {
         const messages: MessageEvent<unknown>[] = [];
-        const radarCorners = ['FL', 'FR', 'RL', 'RR'];
-
-        for (const corner of radarCorners) {
+        for (const corner of ['FL', 'FR', 'RL', 'RR']) {
             const points = this.extractRadarPoints(canData, corner);
             if (points.length > 0) {
                 const pointCloud = this.createPointCloud2Message(points, corner.toLowerCase(), timestamp, scanIndex);
@@ -130,21 +116,16 @@ export class MessageProcessor {
         for (let i = 0; i < 200; i++) {
             const rangeKey = `${corner}__Range_${i}`;
             if (!(rangeKey in canData)) break;
-
             const range = parseFloat(canData[rangeKey] ?? 0);
             if (range <= 0.1) continue;
-
             const azimuth = parseFloat(canData[`${corner}__AziAng_${i}`] ?? 0);
             const elevation = parseFloat(canData[`${corner}__EleAng_${i}`] ?? 0);
             const power = parseFloat(canData[`${corner}__Power_${i}`] ?? 0);
-
             const azimuthRad = azimuth * Math.PI / 180;
             const elevationRad = elevation * Math.PI / 180;
-
             const x = range * Math.cos(elevationRad) * Math.cos(azimuthRad);
             const y = range * Math.cos(elevationRad) * Math.sin(azimuthRad);
             const z = range * Math.sin(elevationRad);
-
             points.push({ x, y, z, intensity: power });
         }
         return points;
@@ -153,7 +134,6 @@ export class MessageProcessor {
     private createPointCloud2Message(points: Array<{x: number, y: number, z: number, intensity: number}>, frameId: string, timestamp: Time, scanIndex: number): any {
         const pointStep = 16;
         const dataArray = new Float32Array(points.length * 4);
-
         for (let i = 0; i < points.length; i++) {
             const point = points[i]!;
             dataArray[i * 4 + 0] = point.x;
@@ -161,7 +141,6 @@ export class MessageProcessor {
             dataArray[i * 4 + 2] = point.z;
             dataArray[i * 4 + 3] = point.intensity;
         }
-
         return {
             header: { stamp: timestamp, frame_id: `radar_${frameId}`, seq: scanIndex },
             height: 1,
@@ -180,13 +159,15 @@ export class MessageProcessor {
         };
     }
 
-    private createMessage(topic: string, schemaName: string, message: any, receiveTime: Time): MessageEvent<unknown> {
+    private createMessage(topic: string, schemaName: string, message: unknown, receiveTime: Time): MessageEvent<unknown> {
+        // [수정] message가 undefined일 경우 빈 객체로 처리하여 오류를 방지합니다.
+        const msg = message ?? {};
         return {
             topic,
             receiveTime,
-            message,
+            message: msg,
             schemaName,
-            sizeInBytes: JSON.stringify(message).length,
+            sizeInBytes: JSON.stringify(msg).length,
         };
     }
 
