@@ -16,7 +16,8 @@ export default class FoxgloveWebSocketDataSourceFactory implements IDataSourceFa
   public iconName: IDataSourceFactory["iconName"] = "Flow";
   public description =
     "Connect to a ROS 1, ROS 2, or custom system using the Foxglove WebSocket protocol. For ROS systems, be sure to first install the foxglove_bridge ROS package.";
-  public docsLinks = [
+
+    public docsLinks = [
     {
       label: "ROS 1",
       url: "https://docs.foxglove.dev/docs/connecting-to-data/frameworks/ros1#foxglove-websocket",
