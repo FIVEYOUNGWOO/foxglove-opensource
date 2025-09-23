@@ -575,7 +575,7 @@ export class MessageProcessor {
 
         for (let i = 0; i < maxPoints; i++) {
             const rangeKey = `${corner}__Range_${i}`;
-            const velocityKey = `${corner}__Velocity_${i}`;
+            // const velocityKey = `${corner}__Velocity_${i}`;
             const aziKey = `${corner}__AziAng_${i}`;
             const eleKey = `${corner}__EleAng_${i}`;
             const powerKey = `${corner}__Power_${i}`;
@@ -584,7 +584,7 @@ export class MessageProcessor {
             if (!(rangeKey in sensorData)) break;
 
             const range = parseFloat(sensorData[rangeKey] || 0);
-            const velocity = parseFloat(sensorData[velocityKey] || 0);
+            // const velocity = parseFloat(sensorData[velocityKey] || 0);
             const azimuth = parseFloat(sensorData[aziKey] || 0);
             const elevation = parseFloat(sensorData[eleKey] || 0);
             const power = parseFloat(sensorData[powerKey] || 0);

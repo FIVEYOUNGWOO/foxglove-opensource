@@ -15,6 +15,8 @@ interface SignalingMessage {
     peer_id?: string;
     your_role?: string;
     state?: string;
+    sdpMid?: string;
+    sdpMLineIndex?: number;
 }
 
 interface ConnectionConfig {
@@ -686,8 +688,6 @@ export class WebRTCConnection {
         console.log("[WebRTC] Connection closed and resources cleaned");
     }
 }
-
-
 
 
 
