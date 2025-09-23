@@ -1,3 +1,5 @@
+// 파일명: WebRTCPlayer.ts
+
 import { v4 as uuidv4 } from "uuid";
 import {
     Player,
@@ -9,152 +11,108 @@ import {
     MessageEvent,
     AdvertiseOptions,
     PublishPayload,
-    TopicStats
+    TopicStats,
+    PlayerProblem,
 } from "@foxglove/studio-base/players/types";
-import { Time, fromMillis } from "@foxglove/rostime";
+import { Time } from "@foxglove/rostime";
 import { ParameterValue } from "@foxglove/studio";
 import { WebRTCConnection } from "./WebRTCConnection";
 import { MessageProcessor } from "./MessageProcessor";
 import { WebRTCPlayerOptions, WebRTCConnectionState } from "./types";
-
-const CAPABILITIES = [PlayerCapabilities.playbackControl, PlayerCapabilities.setSpeed];
 
 export default class WebRTCPlayer implements Player {
     private readonly _id: string = uuidv4();
     private _listener?: (playerState: PlayerState) => Promise<void>;
     private _closed: boolean = false;
 
-    // Core components
     private connection: WebRTCConnection;
     private messageProcessor: MessageProcessor;
 
-    // State management
     private connectionState: WebRTCConnectionState = WebRTCConnectionState.DISCONNECTED;
     private _isPlaying: boolean = false;
     private _speed: number = 1.0;
+    private _problems: PlayerProblem[] = [];
 
-    // Topic management
     private _topics: Topic[] = [];
+    private _datatypes: Map<string, unknown> = new Map();
     private _subscriptions: Map<string, SubscribePayload> = new Map();
-    private _parsedMessages: MessageEvent<unknown>[] = [];
-    private _parsedTopics = new Set<string>();
+    private _messageQueue: MessageEvent<unknown>[] = [];
     private _topicStats: Map<string, TopicStats> = new Map();
 
-    // Statistics
     private _totalBytesReceived: number = 0;
-    private _startTime: Time = fromMillis(Date.now());
-    private _currentTime: Time = fromMillis(Date.now());
+    private _startTime: Time = { sec: 0, nsec: 0 };
+    private _endTime: Time = { sec: 0, nsec: 0 };
+    private _currentTime: Time = { sec: 0, nsec: 0 };
 
-    // Timing
-    private _emitTimer?: number;
     private _lastEmitTime: number = 0;
-    private readonly _emitInterval: number = 100; // 100ms
+    private readonly _emitInterval: number = 50;
 
     constructor(options: WebRTCPlayerOptions) {
-        console.log(`[WebRTCPlayer] Simple ROS1 player initializing: ${options.streamId}`);
-
-        // Initialize message processor
+        console.log(`[WebRTCPlayer] Initializing player for stream: ${options.streamId}`);
         this.messageProcessor = new MessageProcessor();
-
-        // Initialize WebRTC connection
         this.connection = new WebRTCConnection(
             options.signalingUrl,
             options.streamId,
             this.handleMessage.bind(this),
             this.handleStateChange.bind(this)
         );
-
-        // Initialize standard ROS1 topics
-        this.initializeStandardTopics();
-
-        // Start connection
         this.initializeConnection();
-    }
-
-    private initializeStandardTopics(): void {
-        // Standard ROS1 topics that we expect
-        this._topics = [
-            // Camera topics
-            { name: "/camera/cam_1/image_raw/compressed", schemaName: "sensor_msgs/CompressedImage" },
-            { name: "/camera/cam_2/image_raw/compressed", schemaName: "sensor_msgs/CompressedImage" },
-            { name: "/camera/cam_3/image_raw/compressed", schemaName: "sensor_msgs/CompressedImage" },
-            { name: "/camera/cam_4/image_raw/compressed", schemaName: "sensor_msgs/CompressedImage" },
-            { name: "/camera/cam_5/image_raw/compressed", schemaName: "sensor_msgs/CompressedImage" },
-            { name: "/camera/cam_6/image_raw/compressed", schemaName: "sensor_msgs/CompressedImage" },
-
-            // Radar topics
-            { name: "/radar_points_3d/fl", schemaName: "sensor_msgs/PointCloud2" },
-            { name: "/radar_points_3d/fr", schemaName: "sensor_msgs/PointCloud2" },
-            { name: "/radar_points_3d/rl", schemaName: "sensor_msgs/PointCloud2" },
-            { name: "/radar_points_3d/rr", schemaName: "sensor_msgs/PointCloud2" },
-
-            // CAN topics
-            { name: "/vehicle/can/scan_index", schemaName: "std_msgs/Int32" },
-            { name: "/vehicle/can/peak_count", schemaName: "std_msgs/Int32" },
-            { name: "/vehicle/can/cycle_time", schemaName: "std_msgs/Float64" },
-            { name: "/vehicle/speed", schemaName: "std_msgs/Float64" },
-            { name: "/vehicle/rpm", schemaName: "std_msgs/Float64" }
-        ];
-
-        console.log(`[WebRTCPlayer] Initialized ${this._topics.length} standard ROS1 topics`);
     }
 
     private async initializeConnection(): Promise<void> {
         try {
-            console.log("[WebRTCPlayer] Starting WebRTC connection...");
             const connected = await this.connection.connect();
-
             if (connected) {
-                console.log("[WebRTCPlayer] WebRTC connection established");
                 this._isPlaying = true;
             } else {
-                console.error("[WebRTCPlayer] Failed to establish WebRTC connection");
+                this.addProblem("Failed to establish WebRTC connection", "error");
             }
         } catch (error) {
-            console.error("[WebRTCPlayer] Connection initialization error:", error);
+            const errorMessage = error instanceof Error ? error.message : "Unknown error";
+            this.addProblem(`Connection initialization error: ${errorMessage}`, "error");
         }
     }
 
     private handleMessage(data: any): void {
-        try {
-            // Process message through message processor
-            const messages = this.messageProcessor.processMessage(data);
+        const messages = this.messageProcessor.processMessage(data);
+        if (messages.length === 0) return;
 
-            if (messages.length === 0) {
-                return;
-            }
-
-            console.debug(`[WebRTCPlayer] Received ${messages.length} ROS1 messages`);
-
-            // Add messages to queue and update stats
-            for (const message of messages) {
-                this.updateTopicStatistics(message);
-                this._currentTime = message.receiveTime;
-
-                // Add to queue if subscribed
-                if (this._parsedTopics.has(message.topic)) {
-                    this._parsedMessages.push(message);
+        let newTopicsFound = false;
+        for (const message of messages) {
+            if (!this._topics.find(t => t.name === message.topic)) {
+                console.log(`[WebRTCPlayer] Discovered new topic: ${message.topic} (${message.schemaName})`);
+                this._topics.push({ name: message.topic, schemaName: message.schemaName });
+                if (!this._datatypes.has(message.schemaName)) {
+                    this._datatypes.set(message.schemaName, { definitions: [] });
                 }
+                newTopicsFound = true;
             }
-
-            // Update bytes received
-            if (typeof data === 'string') {
-                this._totalBytesReceived += data.length;
+            this.updateTopicStatistics(message);
+            if (this._startTime.sec === 0) this._startTime = message.receiveTime;
+            this._endTime = message.receiveTime;
+            this._currentTime = message.receiveTime;
+            if (this._subscriptions.has(message.topic)) {
+                this._messageQueue.push(message);
             }
-
-            // Emit state
+        }
+        if (newTopicsFound || this._messageQueue.length > 0) {
             this.throttledEmitState();
-
-        } catch (error) {
-            console.error("[WebRTCPlayer] Error handling message:", error);
         }
     }
 
     private handleStateChange(newState: WebRTCConnectionState): void {
-        console.log(`[WebRTCPlayer] State: ${this.connectionState} -> ${newState}`);
+        console.log(`[WebRTCPlayer] Connection state changed: ${newState}`);
         this.connectionState = newState;
         this._isPlaying = (newState === WebRTCConnectionState.CONNECTED);
-        this.throttledEmitState();
+
+        if (newState === WebRTCConnectionState.CONNECTED) {
+            this.clearProblems();
+        } else if (newState === WebRTCConnectionState.FAILED || newState === WebRTCConnectionState.DISCONNECTED) {
+            this.addProblem("Lost connection to data source.", "error");
+        } else if (newState === WebRTCConnectionState.RECONNECTING) {
+            this.addProblem("Attempting to reconnect...", "warn");
+        }
+        this.emitState();
     }
 
     private updateTopicStatistics(message: MessageEvent<unknown>): void {
@@ -162,13 +120,13 @@ export default class WebRTCPlayer implements Player {
             this._topicStats.set(message.topic, {
                 numMessages: 0,
                 firstMessageTime: message.receiveTime,
-                lastMessageTime: message.receiveTime
+                lastMessageTime: message.receiveTime,
             });
         }
-
         const stats = this._topicStats.get(message.topic)!;
         stats.numMessages++;
         stats.lastMessageTime = message.receiveTime;
+        this._totalBytesReceived += message.sizeInBytes;
     }
 
     private throttledEmitState(): void {
@@ -180,143 +138,70 @@ export default class WebRTCPlayer implements Player {
     }
 
     private emitState(): void {
-        if (!this._listener || this._closed) {
-            return;
-        }
+        if (!this._listener || this._closed) return;
 
-        // Auto-emit when connected (like RosbridgePlayer)
-        if (this.connectionState === WebRTCConnectionState.CONNECTED) {
-            if (this._emitTimer != undefined) {
-                clearTimeout(this._emitTimer);
-            }
-            this._emitTimer = setTimeout(() => this.emitState(), 100);
-        }
-
-        // Determine presence
+        const messages = [...this._messageQueue];
+        this._messageQueue = [];
         let presence: PlayerPresence;
         switch (this.connectionState) {
-            case WebRTCConnectionState.CONNECTED:
-                presence = PlayerPresence.PRESENT;
-                break;
-            case WebRTCConnectionState.CONNECTING:
-            case WebRTCConnectionState.RECONNECTING:
-                presence = PlayerPresence.INITIALIZING;
-                break;
-            default:
-                presence = PlayerPresence.ERROR;
-                break;
+            case WebRTCConnectionState.CONNECTED: presence = PlayerPresence.PRESENT; break;
+            case WebRTCConnectionState.CONNECTING: case WebRTCConnectionState.RECONNECTING: presence = PlayerPresence.INITIALIZING; break;
+            default: presence = PlayerPresence.ERROR; break;
         }
 
-        // Get messages and clear queue
-        const messages = [...this._parsedMessages];
-        this._parsedMessages = [];
-
-        console.debug(`[WebRTCPlayer] Emitting: presence=${presence}, messages=${messages.length}`);
-
         const playerState: PlayerState = {
-            name: `WebRTC Stream`,
             presence,
             progress: {},
-            capabilities: CAPABILITIES,
+            capabilities: [PlayerCapabilities.playbackControl, PlayerCapabilities.setSpeed],
             profile: "ros1",
             playerId: this._id,
-            problems: [],
-            urlState: {
-                sourceId: "webrtc-stream",
-                parameters: {},
-            },
             activeData: {
                 messages,
                 totalBytesReceived: this._totalBytesReceived,
                 startTime: this._startTime,
-                endTime: this._currentTime,
+                endTime: this._endTime,
                 currentTime: this._currentTime,
                 isPlaying: this._isPlaying,
                 speed: this._speed,
-                lastSeekTime: 1,
+                lastSeekTime: 0,
                 topics: this._topics,
-                topicStats: new Map(this._topicStats),
-                datatypes: new Map(), // Let Foxglove handle ROS1 datatypes automatically
+                topicStats: this._topicStats,
+                datatypes: this._datatypes,
                 publishedTopics: new Map(),
                 subscribedTopics: new Map(),
                 services: new Map(),
-                parameters: new Map()
-            }
+                parameters: new Map(),
+            },
+            problems: this._problems.length > 0 ? this._problems : undefined,
         };
-
         void this._listener(playerState);
     }
 
-    // Player Interface Implementation
-    setListener(listener: (playerState: PlayerState) => Promise<void>): void {
-        this._listener = listener;
-        this.emitState();
-    }
+    setListener(listener: (playerState: PlayerState) => Promise<void>): void { this._listener = listener; }
+    close(): void { this._closed = true; this._isPlaying = false; void this.connection.close(); this._messageQueue = []; }
+    setSubscriptions(subscriptions: SubscribePayload[]): void { this._subscriptions.clear(); for (const sub of subscriptions) { this._subscriptions.set(sub.topic, sub); } }
+    setPublishers(_publishers: AdvertiseOptions[]): void { /* No-op */ }
+    setParameter(_key: string, _value: ParameterValue): void { /* No-op */ }
+    publish(_payload: PublishPayload): void { /* No-op */ }
+    async callService(): Promise<unknown> { throw new Error("Service calls not supported"); }
+    setGlobalVariables(): void { /* No-op */ }
+    startPlayback(): void { this._isPlaying = true; this.emitState(); }
+    pausePlayback(): void { this._isPlaying = false; this.emitState(); }
+    setPlaybackSpeed(speed: number): void { this._speed = speed; }
+    seekPlayback(_time: Time): void { console.warn("Seeking not supported in real-time stream"); }
 
-    close(): void {
-        this._closed = true;
-        this._isPlaying = false;
-
-        if (this._emitTimer) {
-            clearTimeout(this._emitTimer);
+    private addProblem(message: string, severity: "warn" | "error"): void {
+        if (!this._problems.find(p => p.message === message)) {
+            this._problems.push({ message, severity });
         }
-
-        void this.connection.close();
-        this._parsedMessages = [];
     }
-
-    setSubscriptions(subscriptions: SubscribePayload[]): void {
-        console.log(`[WebRTCPlayer] Subscriptions: ${subscriptions.map(s => s.topic)}`);
-
-        this._subscriptions.clear();
-        this._parsedTopics = new Set(subscriptions.map(s => s.topic));
-
-        for (const sub of subscriptions) {
-            this._subscriptions.set(sub.topic, sub);
-        }
-
-        this.emitState();
-    }
-
-    setPublishers(_publishers: AdvertiseOptions[]): void {
-        // No-op for consumer
-    }
-
-    setParameter(_key: string, _value: ParameterValue): void {
-        // No-op
-    }
-
-    publish(_payload: PublishPayload): void {
-        // No-op for consumer
-    }
-
-    async callService(_service: string, _request: unknown): Promise<unknown> {
-        throw new Error("Service calls not supported");
-    }
-
-    setGlobalVariables(): void {
-        // No-op
-    }
-
-    startPlayback(): void {
-        this._isPlaying = true;
-        this.emitState();
-    }
-
-    pausePlayback(): void {
-        this._isPlaying = false;
-        this.emitState();
-    }
-
-    setPlaybackSpeed(speed: number): void {
-        this._speed = speed;
-        this.emitState();
-    }
-
-    seekPlayback(_time: Time): void {
-        // No-op for real-time
-    }
+    private clearProblems(): void { this._problems = []; }
 }
+
+
+
+
+
 
 /**
  * DO NOT REMOVE IT !
