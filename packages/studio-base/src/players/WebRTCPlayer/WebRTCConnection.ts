@@ -1,7 +1,8 @@
 import { WebRTCConnectionState } from "./types";
 
 // Extended SignalingMessage interface
-interface SignalingMessage {
+interface SignalingMessage
+{
     type: 'offer' | 'answer' | 'ice-candidate' | 'join-room' | 'peer-list' |
           'error' | 'start_connection' | 'peer_state_change' | 'peer_disconnected' |
           'role_assigned' | 'joined' | 'wait_for_offer' | 'pong' | 'ping' | 'join';
@@ -19,14 +20,16 @@ interface SignalingMessage {
     sdpMLineIndex?: number;
 }
 
-interface ConnectionConfig {
+interface ConnectionConfig
+{
     signalingUrl: string;
     streamId: string;
     onMessage: (data: any) => void;
     onStateChange: (state: WebRTCConnectionState) => void;
 }
 
-interface ConnectionStats {
+interface ConnectionStats
+{
     messagesReceived: number;
     bytesReceived: number;
     connectionAttempts: number;
@@ -38,7 +41,8 @@ interface ConnectionStats {
     nonChunkedMessagesReceived: number;
 }
 
-export class WebRTCConnection {
+export class WebRTCConnection
+{
     private websocket?: WebSocket;
     private peerConnection?: RTCPeerConnection;
     private dataChannel?: RTCDataChannel;
@@ -54,7 +58,8 @@ export class WebRTCConnection {
     private reconnectionTimer?: number;
 
     // Statistics tracking
-    private stats: ConnectionStats = {
+    private stats: ConnectionStats =
+    {
         messagesReceived: 0,
         bytesReceived: 0,
         connectionAttempts: 0,
@@ -70,30 +75,23 @@ export class WebRTCConnection {
     private readonly config: ConnectionConfig;
     private clientId?: string;
 
-    constructor(
-        signalingUrl: string,
-        streamId: string,
-        onMessage: (data: any) => void,
-        onStateChange: (state: WebRTCConnectionState) => void
-    ) {
-        this.config = {
-            signalingUrl,
-            streamId,
-            onMessage,
-            onStateChange
-        };
-
+    constructor(signalingUrl: string, streamId: string, onMessage: (data: any) => void, onStateChange: (state: WebRTCConnectionState) => void)
+    {
+        this.config = {signalingUrl, streamId, onMessage, onStateChange};
         console.log(`[WebRTC] Consumer initialized for stream: ${streamId}`);
     }
 
-    async connect(): Promise<boolean> {
-        if (this.connectionAttempts >= this.maxConnectionAttempts) {
+    async connect(): Promise<boolean>
+    {
+        if (this.connectionAttempts >= this.maxConnectionAttempts)
+        {
             console.error(`[WebRTC] Max connection attempts (${this.maxConnectionAttempts}) exceeded`);
             this.setState(WebRTCConnectionState.FAILED);
             return false;
         }
 
-        try {
+        try
+        {
             this.connectionAttempts++;
             this.stats.connectionAttempts++;
             this.stats.connectionStartTime = Date.now();
@@ -111,12 +109,15 @@ export class WebRTCConnection {
             await this.joinRoom();
 
             return true;
-        } catch (error) {
+        }
+        catch (error)
+        {
             console.error("[WebRTC] Connection failed:", error);
             this.setState(WebRTCConnectionState.FAILED);
 
             // Schedule reconnection if attempts remaining
-            if (this.connectionAttempts < this.maxConnectionAttempts) {
+            if (this.connectionAttempts < this.maxConnectionAttempts)
+            {
                 this.scheduleReconnection();
             }
 
@@ -124,10 +125,13 @@ export class WebRTCConnection {
         }
     }
 
-    private async connectToSignalingServer(): Promise<void> {
-        return new Promise((resolve, reject) => {
+    private async connectToSignalingServer(): Promise<void>
+    {
+        return new Promise((resolve, reject) =>
+        {
             // Clean up existing connection
-            if (this.websocket) {
+            if (this.websocket)
+            {
                 this.websocket.close();
             }
 
@@ -136,51 +140,62 @@ export class WebRTCConnection {
 
             this.websocket = new WebSocket(wsUrl);
 
-            const connectionTimeout = setTimeout(() => {
+            const connectionTimeout = setTimeout(() =>
+            {
                 reject(new Error("Signaling server connection timeout"));
             }, 10000);
 
-            this.websocket.onopen = () => {
+            this.websocket.onopen = () =>
+            {
                 clearTimeout(connectionTimeout);
                 console.log("[WebRTC] Connected to signaling server as CONSUMER");
                 resolve();
             };
 
-            this.websocket.onmessage = (event) => {
-                try {
+            this.websocket.onmessage = (event) =>
+            {
+                try
+                {
                     const msg = JSON.parse(event.data) as SignalingMessage;
                     void this.handleSignalingMessage(msg);
-                } catch (error) {
+                }
+                catch (error)
+                {
                     console.error("[WebRTC] Invalid signaling message:", error);
                 }
             };
 
-            this.websocket.onerror = (error) => {
+            this.websocket.onerror = (error) =>
+            {
                 clearTimeout(connectionTimeout);
                 console.error("[WebRTC] Signaling server error:", error);
                 reject(error);
             };
 
-            this.websocket.onclose = (event) => {
+            this.websocket.onclose = (event) =>
+            {
                 clearTimeout(connectionTimeout);
                 console.log(`[WebRTC] Signaling connection closed: ${event.code} - ${event.reason}`);
 
                 // Handle unexpected disconnection
-                if (this.state === WebRTCConnectionState.CONNECTED ||
-                    this.state === WebRTCConnectionState.CONNECTING) {
+                if (this.state === WebRTCConnectionState.CONNECTED || this.state === WebRTCConnectionState.CONNECTING)
+                {
                     this.handleDisconnection();
                 }
             };
         });
     }
 
-    private setupPeerConnection(): void {
+    private setupPeerConnection(): void
+    {
         // Clean up existing connection
-        if (this.peerConnection) {
+        if (this.peerConnection)
+        {
             this.peerConnection.close();
         }
 
-        const configuration: RTCConfiguration = {
+        const configuration: RTCConfiguration =
+        {
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
                 { urls: 'stun:stun1.l.google.com:19302' },
@@ -195,11 +210,13 @@ export class WebRTCConnection {
         console.log("[WebRTC] Peer connection created for consumer");
 
         // Connection state monitoring
-        this.peerConnection.onconnectionstatechange = () => {
+        this.peerConnection.onconnectionstatechange = () =>
+        {
             const state = this.peerConnection?.connectionState;
             console.log(`[WebRTC] Connection state: ${state}`);
 
-            switch (state) {
+            switch (state)
+            {
                 case 'connected':
                     this.handleConnectionEstablished();
                     break;
@@ -217,76 +234,94 @@ export class WebRTCConnection {
         };
 
         // ICE connection state monitoring
-        this.peerConnection.oniceconnectionstatechange = () => {
+        this.peerConnection.oniceconnectionstatechange = () =>
+        {
             const iceState = this.peerConnection?.iceConnectionState;
             console.log(`[WebRTC] ICE connection state: ${iceState}`);
         };
 
         // ICE gathering state monitoring
-        this.peerConnection.onicegatheringstatechange = () => {
+        this.peerConnection.onicegatheringstatechange = () =>
+        {
             const gatheringState = this.peerConnection?.iceGatheringState;
             console.log(`[WebRTC] ICE gathering state: ${gatheringState}`);
         };
 
         // ICE candidate generation
-        this.peerConnection.onicecandidate = (event) => {
-            if (event.candidate && this.websocket?.readyState === WebSocket.OPEN) {
+        this.peerConnection.onicecandidate = (event) =>
+        {
+            if (event.candidate && this.websocket?.readyState === WebSocket.OPEN)
+            {
                 this.sendIceCandidate(event.candidate);
             }
         };
 
         // Data channel handler - Consumer receives channel from producer
-        this.peerConnection.ondatachannel = (event) => {
+        this.peerConnection.ondatachannel = (event) =>
+        {
             console.log(`[WebRTC] Received data channel: ${event.channel.label}`);
             this.attachDataChannelHandlers(event.channel);
         };
     }
 
-    private attachDataChannelHandlers(channel: RTCDataChannel): void {
+    private attachDataChannelHandlers(channel: RTCDataChannel): void
+    {
         this.dataChannel = channel;
 
-        this.dataChannel.onopen = () => {
+        this.dataChannel.onopen = () =>
+        {
             console.log("[WebRTC] Data channel opened - ready to receive data");
             this.setState(WebRTCConnectionState.CONNECTED);
             this.connectionAttempts = 0; // Reset on successful connection
         };
 
-        this.dataChannel.onmessage = (event) => {
-            try {
+        this.dataChannel.onmessage = (event) =>
+        {
+            try
+            {
                 // Update statistics
                 this.stats.messagesReceived++;
                 this.stats.lastMessageTime = Date.now();
 
                 let messageData: any;
 
-                if (typeof event.data === 'string') {
+                if (typeof event.data === 'string')
+                {
                     messageData = event.data;
                     this.stats.bytesReceived += event.data.length;
 
                     // Track chunk vs non-chunk messages
-                    if (this.isChunkedData(event.data)) {
+                    if (this.isChunkedData(event.data))
+                    {
                         this.stats.chunkedMessagesReceived++;
                         console.debug(`[WebRTC] Received chunked message: ${event.data.substring(0, 100)}...`);
-                    } else {
+                    }
+                    else
+                    {
                         this.stats.nonChunkedMessagesReceived++;
                         console.debug(`[WebRTC] Received non-chunked message: ${event.data.substring(0, 100)}...`);
                     }
 
-                } else if (event.data instanceof ArrayBuffer) {
+                }
+                else if (event.data instanceof ArrayBuffer)
+                {
                     messageData = event.data;
                     this.stats.bytesReceived += event.data.byteLength;
                     console.debug(`[WebRTC] Received ArrayBuffer: ${event.data.byteLength} bytes`);
-                } else if (event.data instanceof Blob) {
+                }
+                else if (event.data instanceof Blob)
+                {
                     // Convert Blob to ArrayBuffer
-                    event.data.arrayBuffer().then(buffer => {
+                    event.data.arrayBuffer().then(buffer =>
+                    {
                         this.stats.bytesReceived += buffer.byteLength;
                         console.debug(`[WebRTC] Received Blob converted to ArrayBuffer: ${buffer.byteLength} bytes`);
                         this.config.onMessage(buffer);
-                    }).catch(error => {
-                        console.error("[WebRTC] Failed to process Blob data:", error);
-                    });
+                    }).catch(error => {console.error("[WebRTC] Failed to process Blob data:", error);});
                     return;
-                } else {
+                }
+                else
+                {
                     console.warn("[WebRTC] Unsupported data type:", typeof event.data);
                     return;
                 }
@@ -294,47 +329,40 @@ export class WebRTCConnection {
                 // Pass data to message handler
                 this.config.onMessage(messageData);
 
-            } catch (error) {
+            }
+            catch (error)
+            {
                 console.error("[WebRTC] Error processing data channel message:", error);
             }
         };
 
-        this.dataChannel.onclose = () => {
-            console.warn("[WebRTC] Data channel closed");
-            this.handleDisconnection();
-        };
-
-        this.dataChannel.onerror = (error) => {
-            console.error("[WebRTC] Data channel error:", error);
-        };
+        this.dataChannel.onclose = () => {console.warn("[WebRTC] Data channel closed"); this.handleDisconnection();};
+        this.dataChannel.onerror = (error) => {console.error("[WebRTC] Data channel error:", error);};
 
         // Set buffer threshold for flow control
         this.dataChannel.bufferedAmountLowThreshold = 65536;
-        this.dataChannel.onbufferedamountlow = () => {
-            console.debug("[WebRTC] Data channel buffer low");
-        };
+        this.dataChannel.onbufferedamountlow = () => {console.debug("[WebRTC] Data channel buffer low");};
     }
 
-    private isChunkedData(data: string): boolean {
-        return data.includes('|') &&
-               data.includes('"msg_id"') &&
-               data.includes('"seq"') &&
-               data.includes('"total"');
+    private isChunkedData(data: string): boolean
+    {
+        return data.includes('|') && data.includes('"msg_id"') && data.includes('"seq"') && data.includes('"total"');
     }
 
-    private async joinRoom(): Promise<void> {
-        const joinMessage: SignalingMessage = {
+    private async joinRoom(): Promise<void>
+    {
+        const joinMessage: SignalingMessage =
+        {
             type: 'join-room',
             room: this.config.streamId,
-            data: {
-                role: 'consumer',
-                capabilities: ['data-channel', 'low-latency']
-            }
+            data: {role: 'consumer', capabilities: ['data-channel', 'low-latency']}
         };
 
-        if (this.websocket?.readyState === WebSocket.OPEN) {
+        if (this.websocket?.readyState === WebSocket.OPEN)
+        {
             const messageStr = JSON.stringify(joinMessage);
-            if (messageStr) {
+            if (messageStr)
+            {
                 this.websocket.send(messageStr);
             }
             console.log(`[WebRTC] Joining room as consumer: ${this.config.streamId}`);

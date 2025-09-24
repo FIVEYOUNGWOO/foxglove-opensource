@@ -1,7 +1,8 @@
 // 파일명: WebRTCPlayer.ts
 
 import { v4 as uuidv4 } from "uuid";
-import {
+import
+{
     Player,
     PlayerState,
     PlayerCapabilities,
@@ -22,7 +23,8 @@ import { WebRTCConnection } from "./WebRTCConnection";
 import { MessageProcessor } from "./MessageProcessor";
 import { WebRTCPlayerOptions, WebRTCConnectionState } from "./types";
 
-export default class WebRTCPlayer implements Player {
+export default class WebRTCPlayer implements Player
+{
     private readonly _id: string = uuidv4();
     private _listener?: (playerState: PlayerState) => Promise<void>;
     private _closed: boolean = false;
@@ -49,7 +51,8 @@ export default class WebRTCPlayer implements Player {
     private _lastEmitTime: number = 0;
     private readonly _emitInterval: number = 50;
 
-    constructor(options: WebRTCPlayerOptions) {
+    constructor(options: WebRTCPlayerOptions)
+    {
         console.log(`[WebRTCPlayer] Initializing player for stream: ${options.streamId}`);
         this.messageProcessor = new MessageProcessor();
         this.connection = new WebRTCConnection(
@@ -61,19 +64,31 @@ export default class WebRTCPlayer implements Player {
         this.initializeConnection();
     }
 
-    private async initializeConnection(): Promise<void> {
-        try {
+    private async initializeConnection(): Promise<void>
+    {
+        try
+        {
             const connected = await this.connection.connect();
-            if (connected) {
+            if (connected)
+            {
                 this._isPlaying = true;
-            } else {
+            }
+            else
+            {
                 this.addProblem("Failed to establish WebRTC connection", "error");
             }
-        } catch (error) {
+        }
+        catch (error)
+        {
             const errorMessage = error instanceof Error ? error.message : "Unknown error";
             this.addProblem(`Connection initialization error: ${errorMessage}`, "error");
         }
     }
+
+
+
+    // 파일명: WebRTCPlayer.ts
+    // handleMessage 함수만 아래 내용으로 교체하세요.
 
     private handleMessage(data: any): void {
         const messages = this.messageProcessor.processMessage(data);
@@ -81,46 +96,100 @@ export default class WebRTCPlayer implements Player {
 
         let newTopicsFound = false;
         for (const message of messages) {
+            // 동적 토픽 발견 로직
             if (!this._topics.find(t => t.name === message.topic)) {
                 console.log(`[WebRTCPlayer] Discovered new topic: ${message.topic} (${message.schemaName})`);
-                this._topics.push({ name: message.topic, schemaName: message.schemaName });
+
+                // [수정] .push()로 기존 배열을 수정하는 대신, 새 배열을 생성하여 상태 변경을 명확히 알립니다.
+                this._topics = [...this._topics, { name: message.topic, schemaName: message.schemaName }];
+
                 if (!this._datatypes.has(message.schemaName)) {
-                    // [수정] RosDatatypes 타입에 맞는 객체를 할당합니다.
                     this._datatypes.set(message.schemaName, { definitions: [] });
                 }
                 newTopicsFound = true;
             }
+
             this.updateTopicStatistics(message);
             if (this._startTime.sec === 0) this._startTime = message.receiveTime;
             this._endTime = message.receiveTime;
             this._currentTime = message.receiveTime;
+
             if (this._subscriptions.has(message.topic)) {
                 this._messageQueue.push(message);
             }
         }
+
+        // 새로운 토픽이 발견되었거나, 표시할 메시지가 큐에 쌓였을 경우 UI 업데이트
         if (newTopicsFound || this._messageQueue.length > 0) {
             this.throttledEmitState();
         }
     }
 
-    private handleStateChange(newState: WebRTCConnectionState): void {
+    /**
+     *
+     * DO NOT TOUCH
+     */
+    // private handleMessage(data: any): void
+    // {
+    //     const messages = this.messageProcessor.processMessage(data);
+    //     if (messages.length === 0) return;
+
+    //     let newTopicsFound = false;
+    //     for (const message of messages)
+    //     {
+    //         if (!this._topics.find(t => t.name === message.topic))
+    //         {
+    //             console.log(`[WebRTCPlayer] Discovered new topic: ${message.topic} (${message.schemaName})`);
+    //             this._topics.push({ name: message.topic, schemaName: message.schemaName });
+    //             if (!this._datatypes.has(message.schemaName))
+    //             {
+    //                 this._datatypes.set(message.schemaName, { definitions: [] });
+    //             }
+    //             newTopicsFound = true;
+    //         }
+    //         this.updateTopicStatistics(message);
+    //         if (this._startTime.sec === 0) this._startTime = message.receiveTime;
+    //         this._endTime = message.receiveTime;
+    //         this._currentTime = message.receiveTime;
+
+    //         if (this._subscriptions.has(message.topic))
+    //         {
+    //             this._messageQueue.push(message);
+    //         }
+    //     }
+    //     if (newTopicsFound || this._messageQueue.length > 0) 4
+    //     {
+    //         this.throttledEmitState();
+    //     }
+    // }
+
+    private handleStateChange(newState: WebRTCConnectionState): void
+    {
         console.log(`[WebRTCPlayer] Connection state changed: ${newState}`);
         this.connectionState = newState;
         this._isPlaying = (newState === WebRTCConnectionState.CONNECTED);
 
-        if (newState === WebRTCConnectionState.CONNECTED) {
+        if (newState === WebRTCConnectionState.CONNECTED)
+        {
             this.clearProblems();
-        } else if (newState === WebRTCConnectionState.FAILED || newState === WebRTCConnectionState.DISCONNECTED) {
+        }
+        else if (newState === WebRTCConnectionState.FAILED || newState === WebRTCConnectionState.DISCONNECTED)
+        {
             this.addProblem("Lost connection to data source.", "error");
-        } else if (newState === WebRTCConnectionState.RECONNECTING) {
+        }
+        else if (newState === WebRTCConnectionState.RECONNECTING)
+        {
             this.addProblem("Attempting to reconnect...", "warn");
         }
         this.emitState();
     }
 
-    private updateTopicStatistics(message: MessageEvent<unknown>): void {
-        if (!this._topicStats.has(message.topic)) {
-            this._topicStats.set(message.topic, {
+    private updateTopicStatistics(message: MessageEvent<unknown>): void
+    {
+        if (!this._topicStats.has(message.topic))
+        {
+            this._topicStats.set(message.topic,
+            {
                 numMessages: 0,
                 firstMessageTime: message.receiveTime,
                 lastMessageTime: message.receiveTime,
@@ -132,33 +201,39 @@ export default class WebRTCPlayer implements Player {
         this._totalBytesReceived += message.sizeInBytes;
     }
 
-    private throttledEmitState(): void {
+    private throttledEmitState(): void
+    {
         const now = Date.now();
-        if (now - this._lastEmitTime >= this._emitInterval) {
+        if (now - this._lastEmitTime >= this._emitInterval)
+        {
             this._lastEmitTime = now;
             this.emitState();
         }
     }
 
-    private emitState(): void {
+    private emitState(): void
+    {
         if (!this._listener || this._closed) return;
 
         const messages = [...this._messageQueue];
         this._messageQueue = [];
         let presence: PlayerPresence;
-        switch (this.connectionState) {
+        switch (this.connectionState)
+        {
             case WebRTCConnectionState.CONNECTED: presence = PlayerPresence.PRESENT; break;
             case WebRTCConnectionState.CONNECTING: case WebRTCConnectionState.RECONNECTING: presence = PlayerPresence.INITIALIZING; break;
             default: presence = PlayerPresence.ERROR; break;
         }
 
-        const playerState: PlayerState = {
+        const playerState: PlayerState =
+        {
             presence,
             progress: {},
             capabilities: [PlayerCapabilities.playbackControl, PlayerCapabilities.setSpeed],
             profile: "ros1",
             playerId: this._id,
-            activeData: {
+            activeData:
+            {
                 messages,
                 totalBytesReceived: this._totalBytesReceived,
                 startTime: this._startTime,
@@ -193,8 +268,10 @@ export default class WebRTCPlayer implements Player {
     setPlaybackSpeed(speed: number): void { this._speed = speed; }
     seekPlayback(_time: Time): void { console.warn("Seeking not supported in real-time stream"); }
 
-    private addProblem(message: string, severity: "warn" | "error"): void {
-        if (!this._problems.find(p => p.message === message)) {
+    private addProblem(message: string, severity: "warn" | "error"): void
+    {
+        if (!this._problems.find(p => p.message === message))
+        {
             this._problems.push({ message, severity });
         }
     }
