@@ -271,13 +271,25 @@ export default class WebRTCPlayer implements Player
      */
     // startPlayback(): void { this._isPlaying = true; this.emitState(); }
     // pausePlayback(): void { this._isPlaying = false; this.emitState(); }
-    // setPlaybackSpeed(speed: number): void { this._speed = speed; }
+    // setPlaybackSpeed(_speedFraction: number): void { this._speed = speed; }
     // seekPlayback(_time: Time): void { console.warn("Seeking not supported in real-time stream"); }
 
-    startPlayback(): void { /* No-op */ }
-    pausePlayback(): void { /* No-op */ }
-    setPlaybackSpeed(speed: number): void { /* No-op */ }
-    seekPlayback(_time: Time): void { /* No-op */ }
+    public startPlayback(): void
+    {
+        // no-op
+    }
+    public pausePlayback(): void
+    {
+        // no-op
+    }
+    public seekPlayback(_time: Time): void
+    {
+        // no-op
+    }
+    public setPlaybackSpeed(_speedFraction: number): void
+    {
+        // no-op
+    }
 
     private addProblem(message: string, severity: "warn" | "error"): void
     {
