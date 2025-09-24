@@ -3,7 +3,8 @@
 import { MessageEvent } from "@foxglove/studio-base/players/types";
 import { Time } from "@foxglove/rostime";
 
-interface SensorDataMessage {
+interface SensorDataMessage
+{
     type: 'sensor_update';
     scan_index: number;
     timestamp: number;
@@ -12,9 +13,12 @@ interface SensorDataMessage {
     [key: string]: any;
 }
 
-export class MessageProcessor {
-    private readonly topicMappings = {
-        camera: {
+export class MessageProcessor
+{
+    private readonly topicMappings =
+    {
+        camera:
+        {
             'camera_1': '/camera/cam_1/image_raw/compressed',
             'camera_2': '/camera/cam_2/image_raw/compressed',
             'camera_3': '/camera/cam_3/image_raw/compressed',
@@ -22,7 +26,9 @@ export class MessageProcessor {
             'camera_5': '/camera/cam_5/image_raw/compressed',
             'camera_6': '/camera/cam_6/image_raw/compressed',
         } as Record<string, string>,
-        radar: {
+
+        radar:
+        {
             'FL': '/radar_points_3d/fl',
             'FR': '/radar_points_3d/fr',
             'RL': '/radar_points_3d/rl',
@@ -30,49 +36,64 @@ export class MessageProcessor {
         } as Record<string, string>
     };
 
-    public processMessage(data: string | ArrayBuffer | ArrayBufferView): MessageEvent<unknown>[] {
-        try {
+    public processMessage(data: string | ArrayBuffer | ArrayBufferView): MessageEvent<unknown>[]
+    {
+        try
+        {
             const textData = (typeof data === 'string') ? data : new TextDecoder().decode(data);
             const parsedData = JSON.parse(textData) as SensorDataMessage;
 
-            if (parsedData && parsedData.type === 'sensor_update') {
+            if (parsedData && parsedData.type === 'sensor_update')
+            {
                 return this.processSensorDataMessage(parsedData);
             }
             return [];
-        } catch (error) {
+        }
+        catch (error)
+        {
             console.error("[MessageProcessor] Failed to parse message:", error);
             return [];
         }
     }
 
-    private processSensorDataMessage(sensorData: SensorDataMessage): MessageEvent<unknown>[] {
+    private processSensorDataMessage(sensorData: SensorDataMessage): MessageEvent<unknown>[]
+    {
         const messages: MessageEvent<unknown>[] = [];
         const baseTimestamp = this.normalizeTimestamp(sensorData.timestamp);
         const scanIndex = sensorData.scan_index;
 
         messages.push(this.createMessage('/vehicle/can/scan_index', 'std_msgs/Int32', { data: scanIndex }, baseTimestamp));
 
-        if (sensorData.can_data) {
+        if (sensorData.can_data)
+        {
             messages.push(...this.processCanData(sensorData.can_data, baseTimestamp));
         }
-        if (sensorData.camera_data) {
+        if (sensorData.camera_data)
+        {
             messages.push(...this.processCameraData(sensorData.camera_data, baseTimestamp, scanIndex));
         }
-        if (sensorData.can_data) {
+        if (sensorData.can_data)
+        {
             messages.push(...this.extractRadarData(sensorData.can_data, baseTimestamp, scanIndex));
         }
 
         return messages;
     }
 
-    private processCanData(canData: Record<string, any>, timestamp: Time): MessageEvent<unknown>[] {
+    private processCanData(canData: Record<string, any>, timestamp: Time): MessageEvent<unknown>[]
+    {
         const messages: MessageEvent<unknown>[] = [];
-        for (const [signalName, value] of Object.entries(canData)) {
+        for (const [signalName, value] of Object.entries(canData))
+        {
             const topic = `/vehicle/can/raw/${signalName}`;
             let schemaName = 'std_msgs/Float64';
-            if (Number.isInteger(value)) {
+
+            if (Number.isInteger(value))
+            {
                 schemaName = 'std_msgs/Int32';
-            } else if (typeof value === 'string') {
+            }
+            else if (typeof value === 'string')
+            {
                 schemaName = 'std_msgs/String';
             }
             messages.push(this.createMessage(topic, schemaName, { data: value }, timestamp));
@@ -82,11 +103,14 @@ export class MessageProcessor {
 
     private processCameraData(cameraData: Record<string, string>, timestamp: Time, scanIndex: number): MessageEvent<unknown>[] {
         const messages: MessageEvent<unknown>[] = [];
-        for (const [cameraKey, imageData] of Object.entries(cameraData)) {
+        for (const [cameraKey, imageData] of Object.entries(cameraData))
+        {
             if (!imageData) continue;
             const topic = this.topicMappings.camera[cameraKey];
+
             if (!topic) continue;
-            const cameraMessage = {
+            const cameraMessage =
+            {
                 header: { stamp: timestamp, frame_id: cameraKey, seq: scanIndex },
                 format: 'jpeg',
                 data: imageData,
@@ -96,14 +120,18 @@ export class MessageProcessor {
         return messages;
     }
 
-    private extractRadarData(canData: any, timestamp: Time, scanIndex: number): MessageEvent<unknown>[] {
+    private extractRadarData(canData: any, timestamp: Time, scanIndex: number): MessageEvent<unknown>[]
+    {
         const messages: MessageEvent<unknown>[] = [];
-        for (const corner of ['FL', 'FR', 'RL', 'RR']) {
+        for (const corner of ['FL', 'FR', 'RL', 'RR'])
+        {
             const points = this.extractRadarPoints(canData, corner);
-            if (points.length > 0) {
+            if (points.length > 0)
+            {
                 const pointCloud = this.createPointCloud2Message(points, corner.toLowerCase(), timestamp, scanIndex);
                 const topic = this.topicMappings.radar[corner];
-                if (topic) {
+                if (topic)
+                {
                     messages.push(this.createMessage(topic, 'sensor_msgs/PointCloud2', pointCloud, timestamp));
                 }
             }
@@ -113,19 +141,28 @@ export class MessageProcessor {
 
     private extractRadarPoints(canData: any, corner: string): Array<{x: number, y: number, z: number, intensity: number}> {
         const points: {x: number, y: number, z: number, intensity: number}[] = [];
-        for (let i = 0; i < 200; i++) {
+
+        for (let i = 0; i < 200; i++)
+        {
             const rangeKey = `${corner}__Range_${i}`;
-            if (!(rangeKey in canData)) break;
+            if (!(rangeKey in canData))
+                break;
+
             const range = parseFloat(canData[rangeKey] ?? 0);
-            if (range <= 0.1) continue;
+            if (range <= 0.1)
+                continue;
+
             const azimuth = parseFloat(canData[`${corner}__AziAng_${i}`] ?? 0);
             const elevation = parseFloat(canData[`${corner}__EleAng_${i}`] ?? 0);
             const power = parseFloat(canData[`${corner}__Power_${i}`] ?? 0);
+
             const azimuthRad = azimuth * Math.PI / 180;
             const elevationRad = elevation * Math.PI / 180;
+
             const x = range * Math.cos(elevationRad) * Math.cos(azimuthRad);
             const y = range * Math.cos(elevationRad) * Math.sin(azimuthRad);
             const z = range * Math.sin(elevationRad);
+
             points.push({ x, y, z, intensity: power });
         }
         return points;
@@ -134,13 +171,15 @@ export class MessageProcessor {
     private createPointCloud2Message(points: Array<{x: number, y: number, z: number, intensity: number}>, frameId: string, timestamp: Time, scanIndex: number): any {
         const pointStep = 16;
         const dataArray = new Float32Array(points.length * 4);
-        for (let i = 0; i < points.length; i++) {
+        for (let i = 0; i < points.length; i++)
+        {
             const point = points[i]!;
             dataArray[i * 4 + 0] = point.x;
             dataArray[i * 4 + 1] = point.y;
             dataArray[i * 4 + 2] = point.z;
             dataArray[i * 4 + 3] = point.intensity;
         }
+
         return {
             header: { stamp: timestamp, frame_id: `radar_${frameId}`, seq: scanIndex },
             height: 1,
@@ -159,41 +198,36 @@ export class MessageProcessor {
         };
     }
 
-    // private createMessage(topic: string, schemaName: string, message: unknown, receiveTime: Time): MessageEvent<unknown> {
-    //     // [수정] message가 undefined일 경우 빈 객체로 처리하여 오류를 방지합니다.
-    //     const msg = message ?? {};
-    //     return {
-    //         topic,
-    //         receiveTime,
-    //         message: msg,
-    //         schemaName,
-    //         sizeInBytes: JSON.stringify(msg).length,
-    //     };
-    // }
-
     private createMessage(topic: string, schemaName: string, message: unknown, receiveTime: Time): MessageEvent<unknown> {
         const msg = message ?? {};
         let sizeInBytes = 0;
 
-        try {
+        try
+        {
             const jsonString = JSON.stringify(msg);
-            sizeInBytes = new Blob([jsonString]).size;
-        } catch (error) {
+
+            // Calculate Bytes size
+            try
+            {
+                sizeInBytes = new TextEncoder().encode(jsonString).length;
+            }
+            catch
+            {
+                sizeInBytes = 0;
+            }
+        }
+        catch (error)
+        {
             console.error(`[MessageProcessor] Failed to calculate size for topic ${topic}.`, error);
             console.log("[MessageProcessor] Problematic message object:", msg);
             sizeInBytes = 0;
         }
 
-        return {
-            topic,
-            receiveTime,
-            message: msg,
-            schemaName,
-            sizeInBytes,
-        };
+        return {topic, receiveTime, message: msg, schemaName, sizeInBytes,};
     }
 
-    private normalizeTimestamp(timestamp: number): Time {
+    private normalizeTimestamp(timestamp: number): Time
+    {
         const sec = Math.floor(timestamp);
         const nsec = Math.round((timestamp - sec) * 1e9);
         return { sec, nsec };
