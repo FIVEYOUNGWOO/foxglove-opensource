@@ -199,17 +199,66 @@ export class MessageProcessor
         return points;
     }
 
-    private createPointCloud2Message(points: Array<{x: number, y: number, z: number, intensity: number}>, frameId: string, timestamp: Time, scanIndex: number): any {
-        const pointStep = 16;
+    // private createPointCloud2Message(points: Array<{x: number, y: number, z: number, intensity: number}>, frameId: string, timestamp: Time, scanIndex: number): any {
+    //     const pointStep = 16;
+    //     const dataArray = new Float32Array(points.length * 4);
+    //     for (let i = 0; i < points.length; i++)
+    //     {
+    //         const point = points[i]!;
+    //         dataArray[i * 4 + 0] = point.x;
+    //         dataArray[i * 4 + 1] = point.y;
+    //         dataArray[i * 4 + 2] = point.z;
+    //         dataArray[i * 4 + 3] = point.intensity;
+    //     }
+
+    //     return {
+    //         header: { stamp: timestamp, frame_id: `radar_${frameId}`, seq: scanIndex },
+    //         height: 1,
+    //         width: points.length,
+    //         fields: [
+    //             { name: 'x', offset: 0, datatype: 7, count: 1 },
+    //             { name: 'y', offset: 4, datatype: 7, count: 1 },
+    //             { name: 'z', offset: 8, datatype: 7, count: 1 },
+    //             { name: 'intensity', offset: 12, datatype: 7, count: 1 },
+    //         ],
+    //         is_bigendian: false,
+    //         point_step: pointStep,
+    //         row_step: pointStep * points.length,
+    //         data: Array.from(new Uint8Array(dataArray.buffer)),
+    //         is_dense: true,
+    //     };
+    // }
+
+
+    // 파일명: MessageProcessor.ts
+    // createPointCloud2Message 함수만 아래 내용으로 교체하세요.
+
+    private createPointCloud2Message(
+        points: Array<{x: number, y: number, z: number, intensity: number}>,
+        frameId: string,
+        timestamp: Time,
+        scanIndex: number
+    ): any {
+        const pointStep = 16; // 4 floats * 4 bytes
+        const rowStep = pointStep * points.length;
         const dataArray = new Float32Array(points.length * 4);
-        for (let i = 0; i < points.length; i++)
-        {
+
+        for (let i = 0; i < points.length; i++) {
             const point = points[i]!;
-            dataArray[i * 4 + 0] = point.x;
-            dataArray[i * 4 + 1] = point.y;
-            dataArray[i * 4 + 2] = point.z;
-            dataArray[i * 4 + 3] = point.intensity;
+            const offset = i * 4;
+            dataArray[offset + 0] = point.x;
+            dataArray[offset + 1] = point.y;
+            dataArray[offset + 2] = point.z;
+            dataArray[offset + 3] = point.intensity;
         }
+
+        // [수정] 거대한 바이너리 배열을 Base64 문자열로 변환합니다.
+        const byteArray = new Uint8Array(dataArray.buffer);
+        let binaryString = '';
+        for (let i = 0; i < byteArray.byteLength; i++) {
+            binaryString += String.fromCharCode(byteArray[i]!);
+        }
+        const base64Data = btoa(binaryString);
 
         return {
             header: { stamp: timestamp, frame_id: `radar_${frameId}`, seq: scanIndex },
@@ -223,11 +272,13 @@ export class MessageProcessor
             ],
             is_bigendian: false,
             point_step: pointStep,
-            row_step: pointStep * points.length,
-            data: Array.from(new Uint8Array(dataArray.buffer)),
+            row_step: rowStep,
+            // [수정] 일반 배열 대신 Base64 문자열을 할당합니다.
+            data: base64Data,
             is_dense: true,
         };
     }
+
 
     private createMessage(topic: string, schemaName: string, message: unknown, receiveTime: Time): MessageEvent<unknown> {
         const msg = message ?? {};

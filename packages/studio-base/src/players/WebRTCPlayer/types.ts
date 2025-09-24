@@ -1,6 +1,4 @@
-// Enhanced WebRTC Types for Foxglove Integration
-// This file contains comprehensive type definitions for WebRTC player functionality
-
+//  Types for Foxglove Integration
 import { PlayerMetricsCollectorInterface } from "@foxglove/studio-base/players/types";
 
 export interface WebRTCPlayerOptions {
