@@ -5,7 +5,7 @@ import
 {
     Player,
     PlayerState,
-    PlayerCapabilities,
+    // PlayerCapabilities, // DO NOT REMOVE
     PlayerPresence,
     SubscribePayload,
     Topic,
@@ -76,6 +76,7 @@ export default class WebRTCPlayer implements Player
             if (connected)
             {
                 this._isPlaying = true;
+                this.emitState();
             }
             else
             {
@@ -200,7 +201,7 @@ export default class WebRTCPlayer implements Player
         const playerState: PlayerState =
         {
             presence,
-            progress: undefined,
+            progress: {},
             capabilities: [],
             profile: "ros1",
             playerId: this._id,
