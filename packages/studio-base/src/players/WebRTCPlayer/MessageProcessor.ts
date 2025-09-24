@@ -19,12 +19,13 @@ export class MessageProcessor
     {
         camera:
         {
-            'camera_1': '/cam_1',
-            'camera_2': '/cam_2',
-            'camera_3': '/cam_3',
-            'camera_4': '/cam_4',
-            'camera_5': '/cam_5',
-            'camera_6': '/cam_6',
+            // Write standard ROS topic name as "/camera/image/compressed"
+            'camera_1': '/camera/cam_1/image_raw/compressed',
+            'camera_2': '/camera/cam_2/image_raw/compressed',
+            'camera_3': '/camera/cam_3/image_raw/compressed',
+            'camera_4': '/camera/cam_4/image_raw/compressed',
+            'camera_5': '/camera/cam_5/image_raw/compressed',
+            'camera_6': '/camera/cam_6/image_raw/compressed',
         } as Record<string, string>,
 
         radar:
@@ -101,25 +102,6 @@ export class MessageProcessor
         return messages;
     }
 
-    // private processCameraData(cameraData: Record<string, string>, timestamp: Time, scanIndex: number): MessageEvent<unknown>[] {
-    //     const messages: MessageEvent<unknown>[] = [];
-    //     for (const [cameraKey, imageData] of Object.entries(cameraData))
-    //     {
-    //         if (!imageData) continue;
-    //         const topic = this.topicMappings.camera[cameraKey];
-
-    //         if (!topic) continue;
-    //         const cameraMessage =
-    //         {
-    //             header: { stamp: timestamp, frame_id: cameraKey, seq: scanIndex },
-    //             format: 'jpeg',
-    //             data: imageData,
-    //         };
-    //         messages.push(this.createMessage(topic, 'sensor_msgs/CompressedImage', cameraMessage, timestamp));
-    //     }
-    //     return messages;
-    // }
-
     private processCameraData(cameraData: Record<string, string>, timestamp: Time, scanIndex: number): MessageEvent<unknown>[] {
         const messages: MessageEvent<unknown>[] = [];
         for (const [cameraKey, imageData] of Object.entries(cameraData)) {
@@ -129,7 +111,7 @@ export class MessageProcessor
             if (!topic) continue;
 
             try {
-                // [수정] Base64 문자열을 디코딩하여 Uint8Array(바이트 배열)로 변환합니다.
+                // Convert Base64 string to Uint8Array
                 const binaryString = atob(imageData);
                 const bytes = new Uint8Array(binaryString.length);
                 for (let i = 0; i < binaryString.length; i++) {
@@ -139,7 +121,7 @@ export class MessageProcessor
                 const cameraMessage = {
                     header: { stamp: timestamp, frame_id: cameraKey, seq: scanIndex },
                     format: 'jpeg',
-                    // [수정] 원본 문자열 대신 변환된 바이트 배열을 데이터로 할당합니다.
+                    // Allocate converted bytes array
                     data: bytes,
                 };
                 messages.push(this.createMessage(topic, 'sensor_msgs/CompressedImage', cameraMessage, timestamp));
@@ -170,7 +152,8 @@ export class MessageProcessor
         return messages;
     }
 
-    private extractRadarPoints(canData: any, corner: string): Array<{x: number, y: number, z: number, intensity: number}> {
+    private extractRadarPoints(canData: any, corner: string): Array<{x: number, y: number, z: number, intensity: number}>
+    {
         const points: {x: number, y: number, z: number, intensity: number}[] = [];
 
         for (let i = 0; i < 200; i++)
@@ -199,40 +182,6 @@ export class MessageProcessor
         return points;
     }
 
-    // private createPointCloud2Message(points: Array<{x: number, y: number, z: number, intensity: number}>, frameId: string, timestamp: Time, scanIndex: number): any {
-    //     const pointStep = 16;
-    //     const dataArray = new Float32Array(points.length * 4);
-    //     for (let i = 0; i < points.length; i++)
-    //     {
-    //         const point = points[i]!;
-    //         dataArray[i * 4 + 0] = point.x;
-    //         dataArray[i * 4 + 1] = point.y;
-    //         dataArray[i * 4 + 2] = point.z;
-    //         dataArray[i * 4 + 3] = point.intensity;
-    //     }
-
-    //     return {
-    //         header: { stamp: timestamp, frame_id: `radar_${frameId}`, seq: scanIndex },
-    //         height: 1,
-    //         width: points.length,
-    //         fields: [
-    //             { name: 'x', offset: 0, datatype: 7, count: 1 },
-    //             { name: 'y', offset: 4, datatype: 7, count: 1 },
-    //             { name: 'z', offset: 8, datatype: 7, count: 1 },
-    //             { name: 'intensity', offset: 12, datatype: 7, count: 1 },
-    //         ],
-    //         is_bigendian: false,
-    //         point_step: pointStep,
-    //         row_step: pointStep * points.length,
-    //         data: Array.from(new Uint8Array(dataArray.buffer)),
-    //         is_dense: true,
-    //     };
-    // }
-
-
-    // 파일명: MessageProcessor.ts
-    // createPointCloud2Message 함수만 아래 내용으로 교체하세요.
-
     private createPointCloud2Message(
         points: Array<{x: number, y: number, z: number, intensity: number}>,
         frameId: string,
@@ -243,7 +192,8 @@ export class MessageProcessor
         const rowStep = pointStep * points.length;
         const dataArray = new Float32Array(points.length * 4);
 
-        for (let i = 0; i < points.length; i++) {
+        for (let i = 0; i < points.length; i++)
+        {
             const point = points[i]!;
             const offset = i * 4;
             dataArray[offset + 0] = point.x;
@@ -252,17 +202,18 @@ export class MessageProcessor
             dataArray[offset + 3] = point.intensity;
         }
 
-        // [수정] 거대한 바이너리 배열을 Base64 문자열로 변환합니다.
+        // Convert binary array to Base64 string types
         const byteArray = new Uint8Array(dataArray.buffer);
         let binaryString = '';
-        for (let i = 0; i < byteArray.byteLength; i++) {
+        for (let i = 0; i < byteArray.byteLength; i++)
+        {
             binaryString += String.fromCharCode(byteArray[i]!);
         }
         const base64Data = btoa(binaryString);
 
         return {
             header: { stamp: timestamp, frame_id: `radar_${frameId}`, seq: scanIndex },
-            height: 1,
+            height: 1.7,
             width: points.length,
             fields: [
                 { name: 'x', offset: 0, datatype: 7, count: 1 },
@@ -273,7 +224,7 @@ export class MessageProcessor
             is_bigendian: false,
             point_step: pointStep,
             row_step: rowStep,
-            // [수정] 일반 배열 대신 Base64 문자열을 할당합니다.
+            // Allocate Base64 string
             data: base64Data,
             is_dense: true,
         };
