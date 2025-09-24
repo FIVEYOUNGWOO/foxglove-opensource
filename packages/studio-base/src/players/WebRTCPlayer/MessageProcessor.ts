@@ -159,15 +159,37 @@ export class MessageProcessor {
         };
     }
 
+    // private createMessage(topic: string, schemaName: string, message: unknown, receiveTime: Time): MessageEvent<unknown> {
+    //     // [수정] message가 undefined일 경우 빈 객체로 처리하여 오류를 방지합니다.
+    //     const msg = message ?? {};
+    //     return {
+    //         topic,
+    //         receiveTime,
+    //         message: msg,
+    //         schemaName,
+    //         sizeInBytes: JSON.stringify(msg).length,
+    //     };
+    // }
+
     private createMessage(topic: string, schemaName: string, message: unknown, receiveTime: Time): MessageEvent<unknown> {
-        // [수정] message가 undefined일 경우 빈 객체로 처리하여 오류를 방지합니다.
         const msg = message ?? {};
+        let sizeInBytes = 0;
+
+        try {
+            const jsonString = JSON.stringify(msg);
+            sizeInBytes = new Blob([jsonString]).size;
+        } catch (error) {
+            console.error(`[MessageProcessor] Failed to calculate size for topic ${topic}.`, error);
+            console.log("[MessageProcessor] Problematic message object:", msg);
+            sizeInBytes = 0;
+        }
+
         return {
             topic,
             receiveTime,
             message: msg,
             schemaName,
-            sizeInBytes: JSON.stringify(msg).length,
+            sizeInBytes,
         };
     }
 
