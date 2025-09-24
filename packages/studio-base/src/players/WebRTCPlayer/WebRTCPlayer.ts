@@ -49,7 +49,8 @@ export default class WebRTCPlayer implements Player
     private _currentTime: Time = { sec: 0, nsec: 0 };
 
     private _lastEmitTime: number = 0;
-    private readonly _emitInterval: number = 50;
+    // private readonly _emitInterval: number = 50;
+    private readonly _emitInterval: number = 16;
 
     constructor(options: WebRTCPlayerOptions)
     {
@@ -263,10 +264,20 @@ export default class WebRTCPlayer implements Player
     publish(_payload: PublishPayload): void { /* No-op */ }
     async callService(): Promise<unknown> { throw new Error("Service calls not supported"); }
     setGlobalVariables(): void { /* No-op */ }
-    startPlayback(): void { this._isPlaying = true; this.emitState(); }
-    pausePlayback(): void { this._isPlaying = false; this.emitState(); }
-    setPlaybackSpeed(speed: number): void { this._speed = speed; }
-    seekPlayback(_time: Time): void { console.warn("Seeking not supported in real-time stream"); }
+
+
+    /**
+     * Sub-panel (play, stop)
+     */
+    // startPlayback(): void { this._isPlaying = true; this.emitState(); }
+    // pausePlayback(): void { this._isPlaying = false; this.emitState(); }
+    // setPlaybackSpeed(speed: number): void { this._speed = speed; }
+    // seekPlayback(_time: Time): void { console.warn("Seeking not supported in real-time stream"); }
+
+    startPlayback(): void { /* No-op */ }
+    pausePlayback(): void { /* No-op */ }
+    setPlaybackSpeed(speed: number): void { /* No-op */ }
+    seekPlayback(_time: Time): void { /* No-op */ }
 
     private addProblem(message: string, severity: "warn" | "error"): void
     {

@@ -101,21 +101,52 @@ export class MessageProcessor
         return messages;
     }
 
+    // private processCameraData(cameraData: Record<string, string>, timestamp: Time, scanIndex: number): MessageEvent<unknown>[] {
+    //     const messages: MessageEvent<unknown>[] = [];
+    //     for (const [cameraKey, imageData] of Object.entries(cameraData))
+    //     {
+    //         if (!imageData) continue;
+    //         const topic = this.topicMappings.camera[cameraKey];
+
+    //         if (!topic) continue;
+    //         const cameraMessage =
+    //         {
+    //             header: { stamp: timestamp, frame_id: cameraKey, seq: scanIndex },
+    //             format: 'jpeg',
+    //             data: imageData,
+    //         };
+    //         messages.push(this.createMessage(topic, 'sensor_msgs/CompressedImage', cameraMessage, timestamp));
+    //     }
+    //     return messages;
+    // }
+
     private processCameraData(cameraData: Record<string, string>, timestamp: Time, scanIndex: number): MessageEvent<unknown>[] {
         const messages: MessageEvent<unknown>[] = [];
-        for (const [cameraKey, imageData] of Object.entries(cameraData))
-        {
+        for (const [cameraKey, imageData] of Object.entries(cameraData)) {
             if (!imageData) continue;
-            const topic = this.topicMappings.camera[cameraKey];
 
+            const topic = this.topicMappings.camera[cameraKey];
             if (!topic) continue;
-            const cameraMessage =
-            {
-                header: { stamp: timestamp, frame_id: cameraKey, seq: scanIndex },
-                format: 'jpeg',
-                data: imageData,
-            };
-            messages.push(this.createMessage(topic, 'sensor_msgs/CompressedImage', cameraMessage, timestamp));
+
+            try {
+                // [수정] Base64 문자열을 디코딩하여 Uint8Array(바이트 배열)로 변환합니다.
+                const binaryString = atob(imageData);
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                }
+
+                const cameraMessage = {
+                    header: { stamp: timestamp, frame_id: cameraKey, seq: scanIndex },
+                    format: 'jpeg',
+                    // [수정] 원본 문자열 대신 변환된 바이트 배열을 데이터로 할당합니다.
+                    data: bytes,
+                };
+                messages.push(this.createMessage(topic, 'sensor_msgs/CompressedImage', cameraMessage, timestamp));
+
+            } catch (e) {
+                console.error(`[MessageProcessor] Failed to decode Base64 image for topic ${topic}:`, e);
+            }
         }
         return messages;
     }
