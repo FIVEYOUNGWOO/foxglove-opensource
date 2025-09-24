@@ -39,6 +39,17 @@ export class MessageProcessor
         } as Record<string, string>
     };
 
+    /**
+     * DOTO
+     * below python configulation setting apply to radar_config
+     */
+    // self.radar_config = {
+    //     'FL': {'position': (2.35, 0.95, 0.89), 'orientation': (0, -65, 0), 'azi': -65.0, 'ele': 0.0, 'fov_angle': 170, 'max_range': 250},
+    //     'FR': {'position': (2.35, -0.95, 0.89), 'orientation': (0, 65, 0), 'azi': 65.0, 'ele': 0.0, 'fov_angle': 170, 'max_range': 250},
+    //     'RL': {'position': (-2.35, 0.95, 0.8), 'orientation': (0, -123, 0), 'azi': -123.0, 'ele': 0.0, 'fov_angle': 170, 'max_range': 250},
+    //     'RR': {'position': (-2.35, -0.95, 0.8), 'orientation': (0, 115, 0), 'azi': 115.0, 'ele': 0.0, 'fov_angle': 170, 'max_range': 250}
+    // }
+
     private readonly radar_config = {
         'FL': { position: [2.35, 0.95, 0.89], orientation: [0, 0, 65] }, // roll, pitch, yaw (degrees)
         'FR': { position: [2.35, -0.95, 0.89], orientation: [0, 0, -65] },
@@ -83,6 +94,11 @@ export class MessageProcessor
 
         // Add TF message
         messages.push(...this.createTransforms(baseTimestamp));
+
+        // // Add Grid map and FOV
+        // messages.push(this.createGridMessage(baseTimestamp));
+        // messages.push(this.createFovMessage(baseTimestamp));
+
         messages.push(this.createMessage('/can/scan_index', 'std_msgs/Int32', { data: scanIndex }, baseTimestamp));
 
         if (sensorData.can_data)
@@ -100,6 +116,75 @@ export class MessageProcessor
 
         return messages;
     }
+
+    // // [추가] 3D 패널의 배경 Grid를 생성하는 함수
+    // private createGridMessage(timestamp: Time): MessageEvent<unknown>
+    // {
+    //     const markerArray = { markers: [] as any[] };
+    //     const gridMarker =
+    //     {
+    //         header: { stamp: timestamp, frame_id: "map" },
+    //         ns: "background_grid",
+    //         id: 0,
+    //         type: 5, // LINE_LIST
+    //         action: 0, // ADD
+    //         points: [] as any[],
+    //         scale: { x: 0.05, y: 0, z: 0 },
+    //         color: { r: 0.3, g: 0.3, b: 0.3, a: 0.5 },
+    //         lifetime: { sec: 1, nsec: 0 },
+    //     };
+
+    //     const gridSize = 100;
+    //     const gridStep = 10;
+    //     for (let i = -gridSize; i <= gridSize; i += gridStep)
+    //     {
+    //         gridMarker.points.push({ x: -gridSize, y: i, z: 0 });
+    //         gridMarker.points.push({ x: gridSize, y: i, z: 0 });
+    //         gridMarker.points.push({ x: i, y: -gridSize, z: 0 });
+    //         gridMarker.points.push({ x: i, y: gridSize, z: 0 });
+    //     }
+    //     markerArray.markers.push(gridMarker);
+    //     return this.createMessage("/visualization/grid", "visualization_msgs/MarkerArray", markerArray, timestamp);
+    // }
+
+    // // [추가] Radar의 FOV(Field of View)를 생성하는 함수
+    // private createFovMessage(timestamp: Time): MessageEvent<unknown>
+    // {
+    //     const markerArray = { markers: [] as any[] };
+    //     Object.entries(this.radar_config).forEach(([key, config], i) =>
+    //     {
+    //         const fovMarker =
+    //         {
+    //             header: { stamp: timestamp, frame_id: "base_link" },
+    //             ns: "radar_fov",
+    //             id: i,
+    //             type: 11, // TRIANGLE_LIST
+    //             action: 0, // ADD
+    //             points: [] as any[],
+    //             scale: { x: 1.0, y: 1.0, z: 1.0 },
+    //             color: { r: 0.2, g: 1.0, b: 0.2, a: 0.15 },
+    //             lifetime: { sec: 1, nsec: 0 },
+    //         };
+
+    //         const pos = config.position;
+    //         const yaw = config.orientation[2]; // Yaw in degrees
+    //         const fov = config.fov;
+    //         const range = config.range;
+    //         const segments = 20;
+
+    //         for (let j = 0; j < segments; j++)
+    //         {
+    //             const angle1 = (yaw - fov / 2.0 + (j * fov / segments)) * Math.PI / 180;
+    //             const angle2 = (yaw - fov / 2.0 + ((j + 1) * fov / segments)) * Math.PI / 180;
+
+    //             fovMarker.points.push({ x: pos[0], y: pos[1], z: pos[2] });
+    //             fovMarker.points.push({ x: pos[0] + range * Math.cos(angle1), y: pos[1] + range * Math.sin(angle1), z: pos[2] });
+    //             fovMarker.points.push({ x: pos[0] + range * Math.cos(angle2), y: pos[1] + range * Math.sin(angle2), z: pos[2] });
+    //         }
+    //         markerArray.markers.push(fovMarker);
+    //     });
+    //     return this.createMessage("/visualization/radar_fov", "visualization_msgs/MarkerArray", markerArray, timestamp);
+    // }
 
     private createTransforms(timestamp: Time): MessageEvent<unknown>[] {
 
@@ -119,8 +204,11 @@ export class MessageProcessor
             transforms.push({
                 header: { stamp: timestamp, frame_id: "base_link" },
                 child_frame_id: `radar_${key.toLowerCase()}`,
-                transform: this.eulerToTransform(config.position[0], config.position[1], config.position[2],
-                                                 config.orientation[0], config.orientation[2], config.orientation[1]),});
+                // transform: this.eulerToTransform(config.position[0], config.position[1], config.position[2],
+                //                                  config.orientation[0], config.orientation[2], config.orientation[1])
+                transform: this.eulerToTransform(
+                    config.position[0] ?? 0, config.position[1] ?? 0, config.position[2] ?? 0,
+                    config.orientation[0] ?? 0, config.orientation[2] ?? 0, config.orientation[1] ?? 0),});
         }
 
         // Step 3) Set camera positions
@@ -129,8 +217,11 @@ export class MessageProcessor
             transforms.push({
                 header: { stamp: timestamp, frame_id: "base_link" },
                 child_frame_id: `camera_${key}`,
-                transform: this.eulerToTransform(config.position[0], config.position[1], config.position[2],
-                                                 config.orientation[0], config.orientation[1], config.orientation[2]),});
+                // transform: this.eulerToTransform(config.position[0], config.position[1], config.position[2],
+                //                                  config.orientation[0], config.orientation[1], config.orientation[2])
+                transform: this.eulerToTransform(
+                    config.position[0] ?? 0, config.position[1] ?? 0, config.position[2] ?? 0,
+                    config.orientation[0] ?? 0, config.orientation[1] ?? 0, config.orientation[2] ?? 0)});
         }
 
         const tfMessage = { transforms };
