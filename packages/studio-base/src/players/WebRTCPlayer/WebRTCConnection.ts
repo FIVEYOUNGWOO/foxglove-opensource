@@ -108,7 +108,8 @@ export class WebRTCConnection
 
             while (Date.now() - startTime < maxWaitTime)
             {
-                if (this.state === WebRTCConnectionState.CONNECTED && this.dataChannel?.readyState === 'open')
+                if (this.state === WebRTCConnectionState.CONNECTED &&
+                    this.dataChannel?.readyState === 'open')
                 {
                     console.log("[WebRTC] Connection established successfully!");
                     return true;
@@ -204,9 +205,7 @@ export class WebRTCConnection
         const configuration: RTCConfiguration =
         {
             iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' },
-                { urls: 'stun:stun2.l.google.com:19302' }
+                { urls: 'stun:stun.l.google.com:19302' }
             ],
             iceCandidatePoolSize: 10,
             bundlePolicy: 'max-bundle',
@@ -356,7 +355,8 @@ export class WebRTCConnection
 
         if (this.websocket?.readyState === WebSocket.OPEN)
         {
-            this.websocket.send(JSON.stringify(joinMessage));
+            const messageStr = JSON.stringify(joinMessage);
+            this.websocket.send(messageStr);
             console.log(`[WebRTC] Joining room: ${this.config.streamId}`);
         }
         else
@@ -445,7 +445,8 @@ export class WebRTCConnection
                 type: 'answer',
                 sdp: answer.sdp || ""
             };
-            this.websocket.send(JSON.stringify(answerMessage));
+            const messageStr = JSON.stringify(answerMessage);
+            this.websocket.send(messageStr);
             console.log("[WebRTC] Answer sent");
         }
     }
@@ -553,7 +554,8 @@ export class WebRTCConnection
         {
             if (this.websocket?.readyState === WebSocket.OPEN)
             {
-                this.websocket.send(JSON.stringify(message));
+                const messageStr = JSON.stringify(message);
+                this.websocket.send(messageStr);
                 this.stats.iceCandidatesSent++;
                 console.debug(`[WebRTC] ICE candidate sent (${this.stats.iceCandidatesSent} total)`);
             }
@@ -620,7 +622,8 @@ export class WebRTCConnection
         {
             if (this.websocket?.readyState === WebSocket.OPEN)
             {
-                this.websocket.send(JSON.stringify({ type: 'ping' }));
+                const pingMessage = JSON.stringify({ type: 'ping' });
+                this.websocket.send(pingMessage);
             }
         };
 
