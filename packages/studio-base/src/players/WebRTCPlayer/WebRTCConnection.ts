@@ -356,8 +356,18 @@ export class WebRTCConnection
         if (this.websocket?.readyState === WebSocket.OPEN)
         {
             const messageStr = JSON.stringify(joinMessage);
-            this.websocket.send(messageStr);
-            console.log(`[WebRTC] Joining room: ${this.config.streamId}`);
+
+            if (messageStr)
+            {
+                this.websocket.send(messageStr);
+                console.log(`[WebRTC] Joining room: ${this.config.streamId}`);
+            }
+            else
+            {
+                // throw new Error("Failed to serialize join room message");
+                console.error("[WebRTC] Failed to serialize join room message");
+            }
+            // console.log(`[WebRTC] Joining room: ${this.config.streamId}`);
         }
         else
         {
@@ -446,8 +456,18 @@ export class WebRTCConnection
                 sdp: answer.sdp || ""
             };
             const messageStr = JSON.stringify(answerMessage);
-            this.websocket.send(messageStr);
-            console.log("[WebRTC] Answer sent");
+
+            if (messageStr)
+            {
+                this.websocket.send(messageStr);
+                console.log("[WebRTC] Answer sent");
+            }
+            // this.websocket.send(messageStr);
+            // console.log("[WebRTC] Answer sent");
+            else
+            {
+                console.error("[WebRTC] Failed to serialize answer message");
+            }
         }
     }
 
@@ -555,7 +575,18 @@ export class WebRTCConnection
             if (this.websocket?.readyState === WebSocket.OPEN)
             {
                 const messageStr = JSON.stringify(message);
-                this.websocket.send(messageStr);
+
+                if (messageStr)
+                {
+                    this.websocket.send(messageStr);
+                    console.log("webrtc ice candidate sent");
+                }
+                else
+                {
+                    console.error("[WebRTC] Failed to serialize ICE candidate message");
+                }
+
+                // this.websocket.send(messageStr);
                 this.stats.iceCandidatesSent++;
                 console.debug(`[WebRTC] ICE candidate sent (${this.stats.iceCandidatesSent} total)`);
             }
@@ -623,7 +654,16 @@ export class WebRTCConnection
             if (this.websocket?.readyState === WebSocket.OPEN)
             {
                 const pingMessage = JSON.stringify({ type: 'ping' });
-                this.websocket.send(pingMessage);
+
+                if (pingMessage)
+                {
+                    this.websocket.send(pingMessage);
+                    console.debug("[WebRTC] Sent ping to signaling server");
+                }
+                else
+                {
+                    console.error("[WebRTC] Failed to serialize ping message");
+                }
             }
         };
 
@@ -739,9 +779,23 @@ export class WebRTCConnection
 }
 
 
-/**
- * DO NOT TOUCH
- */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// /**
+//  * DO NOT TOUCH
+//  */
 // import { WebRTCConnectionState } from "./types";
 
 // // Extended SignalingMessage interface
@@ -1461,4 +1515,3 @@ export class WebRTCConnection
 //         console.log("[WebRTC] Connection closed and resources cleaned");
 //     }
 // }
-// z
