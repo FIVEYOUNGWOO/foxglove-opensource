@@ -19,27 +19,67 @@ import { ParameterValue } from "@foxglove/studio";
 import { WebRTCConnection } from "./WebRTCConnection";
 import { MessageProcessor } from "./MessageProcessor";
 import { WebRTCPlayerOptions, WebRTCConnectionState } from "./types";
-import * as _ from 'lodash-es';
 
-// [핵심 수정] 화면 갱신 주기를 상수로 정의 (33ms -> 약 30fps)
-const EMIT_INTERVAL_MS = 50;
+// [핵심] RosbridgePlayer가 사용하는 디바운스 헬퍼 함수를 그대로 가져옵니다.
+function debouncePromise<T extends (...args: any[]) => Promise<any>>(
+  func: T,
+  wait?: number,
+): T {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  let D: {
+    promise: Promise<any>;
+    resolve: (value: any) => void;
+    reject: (reason: any) => void;
+  } | undefined;
+
+  return function (this: any, ...args: any[]): Promise<any> {
+    const context = this;
+    const later = async () => {
+      timeout = undefined;
+      if (D) {
+        const d = D;
+        D = undefined;
+        try {
+          const result = await func.apply(context, args);
+          d.resolve(result);
+        } catch (error) {
+          d.reject(error);
+        }
+      }
+    };
+
+    if (timeout != undefined) {
+      clearTimeout(timeout);
+    }
+    timeout = setTimeout(later, wait);
+
+    if (!D) {
+      D = (() => {
+        let resolve: (value: any) => void;
+        let reject: (reason: any) => void;
+        const promise = new Promise((res, rej) => {
+          resolve = res;
+          reject = rej;
+        });
+        return { promise, resolve: resolve!, reject: reject! };
+      })();
+    }
+    return D.promise;
+  } as T;
+}
+
 
 export default class WebRTCPlayer implements Player {
     private readonly _id: string = uuidv4();
     private _listener?: (playerState: PlayerState) => Promise<void>;
     private _closed: boolean = false;
-
-    // [핵심 수정] 고정 주기로 emitState를 호출할 타이머 ID
-    // private _emitTimer?: NodeJS.Timeout;
-    // private _emitTimer?: number
-    private _emitTimer?: any;
+    private _emitTimer?: ReturnType<typeof setTimeout>;
 
     private connection: WebRTCConnection;
     private messageProcessor: MessageProcessor;
 
     private connectionState: WebRTCConnectionState = WebRTCConnectionState.DISCONNECTED;
     private _isPlaying: boolean = false;
-    private _speed: number = 1.0;
     private _problems: PlayerProblem[] = [];
 
     private _topics: Topic[] = [];
@@ -62,12 +102,8 @@ export default class WebRTCPlayer implements Player {
             this.handleMessage.bind(this),
             this.handleStateChange.bind(this)
         );
-
         this.initializeTopics();
         this.initializeConnection();
-
-        // [핵심 수정] 생성자에서 고정 주기 타이머를 시작합니다.
-        this._emitTimer = setInterval(() => this.emitState(), EMIT_INTERVAL_MS);
     }
 
     private initializeTopics(): void {
@@ -84,15 +120,13 @@ export default class WebRTCPlayer implements Player {
             topics.push({ name: `/radar_points_3d/${corner}`, schemaName: "sensor_msgs/PointCloud2" });
         }
         this._topics = topics;
-
         for (const topic of topics) {
-            if (topic.schemaName && !this._datatypes.has(topic.schemaName)) {
+            if (topic.schemaName) {
                 this._datatypes.set(topic.schemaName, { definitions: [] });
             }
         }
     }
 
-    // [핵심 수정] handleMessage는 이제 데이터를 큐에 쌓기만 하고, UI 업데이트를 직접 호출하지 않습니다.
     private handleMessage(data: any): void {
         const messages = this.messageProcessor.processMessage(data);
         if (messages.length === 0) return;
@@ -105,18 +139,34 @@ export default class WebRTCPlayer implements Player {
                 }
             }
             this.updateTopicStatistics(message);
-            if (this._startTime.sec === 0) this._startTime = message.receiveTime;
+            if (this._startTime.sec === 0) {
+                this._startTime = message.receiveTime;
+            }
             this._endTime = message.receiveTime;
             this._currentTime = message.receiveTime;
+
             if (this._subscriptions.has(message.topic)) {
                 this._messageQueue.push(message);
             }
         }
+        // [핵심 수정] 데이터가 들어오면, 디바운싱된 emitState를 호출합니다.
+        void this.emitState();
     }
 
-    // [핵심 수정] emitState는 이제 고정 타이머에 의해서만 주기적으로 호출됩니다.
-    private emitState(): void {
-        if (!this._listener || this._closed) return;
+    // [핵심 수정] RosbridgePlayer와 동일한 디바운싱 및 주기적 호출 로직 적용
+    private emitState = debouncePromise((): Promise<void> => {
+        if (!this._listener || this._closed) {
+            return Promise.resolve();
+        }
+
+        // 연결이 활성화되어 있을 때, 100ms 후에 다시 emitState를 호출하도록 예약합니다.
+        // 이것이 데이터가 없어도 UI가 '활성' 상태를 유지하게 해줍니다.
+        if (this.connectionState === WebRTCConnectionState.CONNECTED) {
+            if (this._emitTimer != undefined) {
+                clearTimeout(this._emitTimer);
+            }
+            this._emitTimer = setTimeout(() => this.emitState(), 100);
+        }
 
         const messages = [...this._messageQueue];
         this._messageQueue = [];
@@ -138,13 +188,13 @@ export default class WebRTCPlayer implements Player {
                 messages,
                 totalBytesReceived: this._totalBytesReceived,
                 startTime: this._startTime,
-                endTime: this._endTime,
+                endTime: this._currentTime, // 항상 현재 시간을 endTime으로 설정
                 currentTime: this._currentTime,
                 isPlaying: this._isPlaying,
-                speed: this._speed,
+                speed: 1.0,
                 lastSeekTime: 0,
                 topics: this._topics,
-                topicStats: this._topicStats,
+                topicStats: new Map(this._topicStats),
                 datatypes: this._datatypes,
                 publishedTopics: new Map(),
                 subscribedTopics: new Map(),
@@ -153,32 +203,30 @@ export default class WebRTCPlayer implements Player {
             },
             problems: this._problems.length > 0 ? this._problems : undefined,
         };
-        void this._listener(playerState);
-    }
+
+        return this._listener(playerState);
+    });
 
     close(): void {
         this._closed = true;
         this._isPlaying = false;
-
-        // [핵심 수정] 플레이어가 닫힐 때 타이머를 반드시 정리합니다.
-        if (this._emitTimer) {
-            clearInterval(this._emitTimer);
+        if (this._emitTimer != undefined) {
+            clearTimeout(this._emitTimer);
         }
-
         void this.connection.close();
         this._messageQueue = [];
     }
 
-    // ... (이하 나머지 코드는 모두 이전과 동일합니다) ...
+    // ... 이하 나머지 코드는 이전과 동일합니다 ...
     private async initializeConnection(): Promise<void> {
         try {
             const connected = await this.connection.connect();
             if (connected) {
                 this._isPlaying = true;
-                this.emitState(); // 초기 상태는 한 번 전송
             } else {
                 this.addProblem("Failed to establish WebRTC connection", "error");
             }
+            // 초기 상태 전송은 setListener나 handleStateChange에서 처리
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : "Unknown error";
             this.addProblem(`Connection initialization error: ${errorMessage}`, "error");
@@ -191,18 +239,16 @@ export default class WebRTCPlayer implements Player {
         if (newState === WebRTCConnectionState.CONNECTED) { this.clearProblems(); }
         else if (newState === WebRTCConnectionState.FAILED || newState === WebRTCConnectionState.DISCONNECTED) { this.addProblem("Lost connection to data source.", "error"); }
         else if (newState === WebRTCConnectionState.RECONNECTING) { this.addProblem("Attempting to reconnect...", "warn"); }
-        this.emitState();
+        void this.emitState();
     }
     private updateTopicStatistics(message: MessageEvent<unknown>): void {
-        if (!this._topicStats.has(message.topic)) {
-            this._topicStats.set(message.topic, { numMessages: 0, firstMessageTime: message.receiveTime, lastMessageTime: message.receiveTime });
-        }
+        if (!this._topicStats.has(message.topic)) { this._topicStats.set(message.topic, { numMessages: 0, firstMessageTime: message.receiveTime, lastMessageTime: message.receiveTime }); }
         const stats = this._topicStats.get(message.topic)!;
         stats.numMessages++;
         stats.lastMessageTime = message.receiveTime;
         this._totalBytesReceived += message.sizeInBytes;
     }
-    setListener(listener: (playerState: PlayerState) => Promise<void>): void { this._listener = listener; }
+    setListener(listener: (playerState: PlayerState) => Promise<void>): void { this._listener = listener; void this.emitState(); }
     setSubscriptions(subscriptions: SubscribePayload[]): void { this._subscriptions.clear(); for (const sub of subscriptions) { this._subscriptions.set(sub.topic, sub); } }
     setPublishers(_publishers: AdvertiseOptions[]): void { /* No-op */ }
     setParameter(_key: string, _value: ParameterValue): void { /* No-op */ }
