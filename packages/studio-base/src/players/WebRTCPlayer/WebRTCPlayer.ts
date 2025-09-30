@@ -25,8 +25,8 @@ export default class WebRTCPlayer implements Player {
     private _listener?: (playerState: PlayerState) => Promise<void>;
     private _closed: boolean = false;
 
-    // [수정] UI 업데이트 요청이 중복되지 않도록 관리하는 플래그
-    private _pendingEmit = false;
+    // [수정] 렌더링 충돌을 막기 위한 상태 플래그
+    private _isEmitting = false;
 
     private connection: WebRTCConnection;
     private messageProcessor: MessageProcessor;
@@ -56,13 +56,10 @@ export default class WebRTCPlayer implements Player {
             this.handleMessage.bind(this),
             this.handleStateChange.bind(this)
         );
-
-        // [추가] 플레이어 시작 시 예상 토픽 목록을 미리 초기화합니다.
         this.initializeTopics();
         this.initializeConnection();
     }
 
-    // [추가] Foxglove가 시작될 때 패널이 토픽을 찾을 수 있도록 미리 알려주는 함수
     private initializeTopics(): void {
         const topics: Topic[] = [
             { name: "/tf", schemaName: "tf2_msgs/TFMessage" },
@@ -107,69 +104,18 @@ export default class WebRTCPlayer implements Player {
             }
         }
 
-        // [수정] 데이터가 있을 경우, 지연 없이 즉시 emitState를 호출하도록 예약합니다.
-        if ((newTopicsFound || this._messageQueue.length > 0) && !this._pendingEmit) {
-            this._pendingEmit = true;
-            // setTimeout 0ms는 "지금 하고 있는 급한 일(데이터 처리) 끝나면 바로 실행해줘" 라는 의미입니다.
-            // 이것이 화면 깜빡임과 설정 초기화 문제를 해결하는 핵심입니다.
-            setTimeout(() => this.emitState(), 0);
+        // [수정] RosbridgePlayer와 유사한 안정적인 상태 업데이트 방식
+        if (newTopicsFound || this._messageQueue.length > 0) {
+            void this.emitState();
         }
     }
 
-
-
-
-
-
-    // private emitState(): void {
-    //     // [수정] emit이 호출되면, 다시 emit을 예약할 수 있도록 플래그를 리셋합니다.
-    //     this._pendingEmit = false;
-    //     if (!this._listener || this._closed) return;
-
-    //     const messages = [...this._messageQueue];
-    //     this._messageQueue = [];
-
-    //     let presence: PlayerPresence;
-    //     switch (this.connectionState) {
-    //         case WebRTCConnectionState.CONNECTED: presence = PlayerPresence.PRESENT; break;
-    //         case WebRTCConnectionState.CONNECTING: case WebRTCConnectionState.RECONNECTING: presence = PlayerPresence.INITIALIZING; break;
-    //         default: presence = PlayerPresence.ERROR; break;
-    //     }
-
-    //     const playerState: PlayerState = {
-    //         presence,
-    //         progress: {}, // 타입 에러 방지를 위해 빈 객체 유지
-    //         capabilities: [], // 재생 제어 UI 숨김
-    //         profile: "ros1",
-    //         playerId: this._id,
-    //         activeData: {
-    //             messages,
-    //             totalBytesReceived: this._totalBytesReceived,
-    //             startTime: this._startTime,
-    //             endTime: this._endTime,
-    //             currentTime: this._currentTime,
-    //             isPlaying: this._isPlaying,
-    //             speed: this._speed,
-    //             lastSeekTime: 0,
-    //             topics: this._topics,
-    //             topicStats: this._topicStats,
-    //             datatypes: this._datatypes,
-    //             publishedTopics: new Map(),
-    //             subscribedTopics: new Map(),
-    //             services: new Map(),
-    //             parameters: new Map(),
-    //         },
-    //         problems: this._problems.length > 0 ? this._problems : undefined,
-    //     };
-    //     void this._listener(playerState);
-    // }
-
-
-// 파일명: WebRTCPlayer.ts
-// emitState 함수만 아래 내용으로 교체하세요.
-
-    private emitState(): void {
-        if (!this._listener || this._closed) return;
+    // [수정] emitState를 비동기(async)로 만들고, 동시에 여러 번 호출되지 않도록 수정
+    private async emitState(): Promise<void> {
+        if (!this._listener || this._closed || this._isEmitting) {
+            return;
+        }
+        this._isEmitting = true;
 
         const messages = [...this._messageQueue];
         this._messageQueue = [];
@@ -183,11 +129,8 @@ export default class WebRTCPlayer implements Player {
 
         const playerState: PlayerState = {
             presence,
-            // [최종 수정] @ts-expect-error를 사용해 타입 검사를 통과하고,
-            // undefined를 할당하여 재생 패널을 숨기고 UI 초기화 문제를 해결합니다.
-            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-            // @ts-expect-error: PlayerState requires progress, but we set it to undefined for realtime streams to hide the timeline.
-            progress: undefined,
+            // [수정] messageCache 에러를 해결하기 위한 최소한의 progress 객체
+            progress: { fullyLoadedFractionRanges: [] },
             capabilities: [],
             profile: "ros1",
             playerId: this._id,
@@ -210,12 +153,13 @@ export default class WebRTCPlayer implements Player {
             },
             problems: this._problems.length > 0 ? this._problems : undefined,
         };
-        void this._listener(playerState);
+
+        try {
+            await this._listener(playerState);
+        } finally {
+            this._isEmitting = false;
+        }
     }
-
-
-
-
 
     // ... (이하 나머지 코드는 모두 이전과 동일합니다) ...
     private async initializeConnection(): Promise<void> {
@@ -223,7 +167,7 @@ export default class WebRTCPlayer implements Player {
             const connected = await this.connection.connect();
             if (connected) {
                 this._isPlaying = true;
-                this.emitState();
+                await this.emitState();
             } else {
                 this.addProblem("Failed to establish WebRTC connection", "error");
             }
@@ -239,7 +183,7 @@ export default class WebRTCPlayer implements Player {
         if (newState === WebRTCConnectionState.CONNECTED) { this.clearProblems(); }
         else if (newState === WebRTCConnectionState.FAILED || newState === WebRTCConnectionState.DISCONNECTED) { this.addProblem("Lost connection to data source.", "error"); }
         else if (newState === WebRTCConnectionState.RECONNECTING) { this.addProblem("Attempting to reconnect...", "warn"); }
-        this.emitState();
+        void this.emitState();
     }
     private updateTopicStatistics(message: MessageEvent<unknown>): void {
         if (!this._topicStats.has(message.topic)) {
@@ -265,7 +209,6 @@ export default class WebRTCPlayer implements Player {
     private addProblem(message: string, severity: "warn" | "error"): void { if (!this._problems.find(p => p.message === message)) { this._problems.push({ message, severity }); } }
     private clearProblems(): void { this._problems = []; }
 }
-
 
 
 
