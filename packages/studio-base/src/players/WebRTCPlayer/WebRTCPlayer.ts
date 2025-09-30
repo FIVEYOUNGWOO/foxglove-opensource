@@ -19,7 +19,6 @@ import { ParameterValue } from "@foxglove/studio";
 import { WebRTCConnection } from "./WebRTCConnection";
 import { MessageProcessor } from "./MessageProcessor";
 import { WebRTCPlayerOptions, WebRTCConnectionState } from "./types";
-import { WAITING_FOR_SYNC_EMPTY_HUD_ITEM } from '../../panels/ThreeDeeRender/renderables/ImageMode/MessageHandler';
 import * as _ from 'lodash-es';
 
 // [핵심 수정] 화면 갱신 주기를 상수로 정의 (33ms -> 약 30fps)
