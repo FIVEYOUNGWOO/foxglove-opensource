@@ -1,3 +1,5 @@
+// 파일명: WebRTCPlayer.ts
+
 import { v4 as uuidv4 } from "uuid";
 import {
     Player,
@@ -21,7 +23,7 @@ export default class WebRTCPlayer implements Player {
     private readonly _id: string = uuidv4();
     private _listener?: (playerState: PlayerState) => Promise<void>;
     private _closed: boolean = false;
-    private _animationFrameId?: number; // [추가] 렌더링 루프 ID
+    private _animationFrameId?: number;
 
     private connection: WebRTCConnection;
     private messageProcessor: MessageProcessor;
@@ -51,18 +53,12 @@ export default class WebRTCPlayer implements Player {
             this.handleMessage.bind(this),
             this.handleStateChange.bind(this)
         );
-
-        // [추가] 플레이어 시작 시 예상 토픽 목록을 미리 초기화합니다.
         this.initializeTopics();
-
         this.initializeConnection();
-
-        // [추가] 안정적인 렌더링을 위해 애니메이션 프레임 기반 루프를 시작합니다.
         this._renderLoop = this._renderLoop.bind(this);
         this._animationFrameId = requestAnimationFrame(this._renderLoop);
     }
 
-    // [추가] Foxglove가 시작될 때 패널이 토픽을 찾을 수 있도록 미리 알려주는 함수
     private initializeTopics(): void {
         const topics: Topic[] = [
             { name: "/tf", schemaName: "tf2_msgs/TFMessage" },
@@ -77,21 +73,18 @@ export default class WebRTCPlayer implements Player {
             topics.push({ name: `/radar_points_3d/${corner}`, schemaName: "sensor_msgs/PointCloud2" });
         }
         this._topics = topics;
-
-        // 데이터 타입 정보도 미리 채워줍니다.
         for (const topic of topics) {
-            if (!this._datatypes.has(topic.schemaName)) {
-                this._datatypes.set(topic.schemaName, { definitions: [] });
+            // [수정] topic.schemaName이 undefined가 아닌 경우에만 맵에 추가합니다.
+            if (topic.schemaName) {
+                if (!this._datatypes.has(topic.schemaName)) {
+                    this._datatypes.set(topic.schemaName, { definitions: [] });
+                }
             }
         }
     }
 
-    // [추가] 브라우저 렌더링에 맞춰 UI를 업데이트하는 메인 루프
     private _renderLoop(): void {
-        if (this._closed) {
-            return;
-        }
-        // 이 루프에서 emitState를 주기적으로 호출하여 UI를 갱신합니다.
+        if (this._closed) return;
         this.emitState();
         this._animationFrameId = requestAnimationFrame(this._renderLoop);
     }
@@ -101,10 +94,10 @@ export default class WebRTCPlayer implements Player {
         if (messages.length === 0) return;
 
         for (const message of messages) {
-            // 동적 토픽 발견 로직은 그대로 유지 (예상 못한 토픽이 들어올 경우를 대비)
             if (!this._topics.find(t => t.name === message.topic)) {
                 this._topics = [...this._topics, { name: message.topic, schemaName: message.schemaName }];
-                if (!this._datatypes.has(message.schemaName)) {
+                // [수정] message.schemaName이 undefined가 아닌 경우에만 맵에 추가합니다.
+                if (message.schemaName && !this._datatypes.has(message.schemaName)) {
                     this._datatypes.set(message.schemaName, { definitions: [] });
                 }
             }
@@ -112,28 +105,19 @@ export default class WebRTCPlayer implements Player {
             if (this._startTime.sec === 0) this._startTime = message.receiveTime;
             this._endTime = message.receiveTime;
             this._currentTime = message.receiveTime;
-
-            // 구독된 토픽만 큐에 추가 (이전과 동일)
             if (this._subscriptions.has(message.topic)) {
                 this._messageQueue.push(message);
             }
         }
-        // [수정] 여기서 직접 emitState를 호출하지 않고, renderLoop가 처리하도록 둡니다.
     }
 
     private emitState(): void {
         if (!this._listener || this._closed) return;
 
-        // [수정] 이번 프레임에 렌더링할 메시지만 가져오고 큐는 비웁니다.
         const messages = [...this._messageQueue];
         this._messageQueue = [];
 
-        // [수정] 렌더링할 메시지가 없더라도, 토픽 목록이나 연결 상태 등
-        // 다른 UI 상태 업데이트를 위해 항상 playerState를 전송합니다.
-        // 이것이 3D 패널 설정 초기화 문제를 해결합니다.
-
         let presence: PlayerPresence;
-        // ... (이하 presence 설정 및 playerState 객체 생성은 이전과 동일)
         switch (this.connectionState) {
             case WebRTCConnectionState.CONNECTED: presence = PlayerPresence.PRESENT; break;
             case WebRTCConnectionState.CONNECTING: case WebRTCConnectionState.RECONNECTING: presence = PlayerPresence.INITIALIZING; break;
@@ -142,7 +126,8 @@ export default class WebRTCPlayer implements Player {
 
         const playerState: PlayerState = {
             presence,
-            progress: undefined,
+            // [수정] undefined 대신 빈 객체 {} 를 전달하여 타입 에러를 해결합니다.
+            progress: {},
             capabilities: [],
             profile: "ros1",
             playerId: this._id,
@@ -171,12 +156,9 @@ export default class WebRTCPlayer implements Player {
     close(): void {
         this._closed = true;
         this._isPlaying = false;
-
-        // [추가] 렌더링 루프를 확실하게 종료합니다.
         if (this._animationFrameId != undefined) {
             cancelAnimationFrame(this._animationFrameId);
         }
-
         void this.connection.close();
         this._messageQueue = [];
     }
