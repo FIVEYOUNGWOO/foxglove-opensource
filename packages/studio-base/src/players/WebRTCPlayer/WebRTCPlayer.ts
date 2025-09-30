@@ -19,6 +19,7 @@ import { ParameterValue } from "@foxglove/studio";
 import { WebRTCConnection } from "./WebRTCConnection";
 import { MessageProcessor } from "./MessageProcessor";
 import { WebRTCPlayerOptions, WebRTCConnectionState } from "./types";
+import { WAITING_FOR_SYNC_EMPTY_HUD_ITEM } from '../../panels/ThreeDeeRender/renderables/ImageMode/MessageHandler';
 import * as _ from 'lodash-es';
 
 // [핵심 수정] 화면 갱신 주기를 상수로 정의 (33ms -> 약 30fps)
@@ -31,7 +32,8 @@ export default class WebRTCPlayer implements Player {
 
     // [핵심 수정] 고정 주기로 emitState를 호출할 타이머 ID
     // private _emitTimer?: NodeJS.Timeout;
-    private _emitTimer?: number
+    // private _emitTimer?: number
+    private _emitTimer?: any;
 
     private connection: WebRTCConnection;
     private messageProcessor: MessageProcessor;
