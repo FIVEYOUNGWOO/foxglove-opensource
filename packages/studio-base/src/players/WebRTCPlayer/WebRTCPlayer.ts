@@ -19,14 +19,19 @@ import { ParameterValue } from "@foxglove/studio";
 import { WebRTCConnection } from "./WebRTCConnection";
 import { MessageProcessor } from "./MessageProcessor";
 import { WebRTCPlayerOptions, WebRTCConnectionState } from "./types";
+import * as _ from 'lodash-es';
+
+// [핵심 수정] 화면 갱신 주기를 상수로 정의 (33ms -> 약 30fps)
+const EMIT_INTERVAL_MS = 50;
 
 export default class WebRTCPlayer implements Player {
     private readonly _id: string = uuidv4();
     private _listener?: (playerState: PlayerState) => Promise<void>;
     private _closed: boolean = false;
 
-    // [수정] 렌더링 충돌을 막기 위한 상태 플래그
-    private _isEmitting = false;
+    // [핵심 수정] 고정 주기로 emitState를 호출할 타이머 ID
+    // private _emitTimer?: NodeJS.Timeout;
+    private _emitTimer?: number
 
     private connection: WebRTCConnection;
     private messageProcessor: MessageProcessor;
@@ -56,8 +61,12 @@ export default class WebRTCPlayer implements Player {
             this.handleMessage.bind(this),
             this.handleStateChange.bind(this)
         );
+
         this.initializeTopics();
         this.initializeConnection();
+
+        // [핵심 수정] 생성자에서 고정 주기 타이머를 시작합니다.
+        this._emitTimer = setInterval(() => this.emitState(), EMIT_INTERVAL_MS);
     }
 
     private initializeTopics(): void {
@@ -82,18 +91,17 @@ export default class WebRTCPlayer implements Player {
         }
     }
 
+    // [핵심 수정] handleMessage는 이제 데이터를 큐에 쌓기만 하고, UI 업데이트를 직접 호출하지 않습니다.
     private handleMessage(data: any): void {
         const messages = this.messageProcessor.processMessage(data);
         if (messages.length === 0) return;
 
-        let newTopicsFound = false;
         for (const message of messages) {
             if (!this._topics.find(t => t.name === message.topic)) {
                 this._topics = [...this._topics, { name: message.topic, schemaName: message.schemaName }];
                 if (message.schemaName && !this._datatypes.has(message.schemaName)) {
                     this._datatypes.set(message.schemaName, { definitions: [] });
                 }
-                newTopicsFound = true;
             }
             this.updateTopicStatistics(message);
             if (this._startTime.sec === 0) this._startTime = message.receiveTime;
@@ -103,19 +111,11 @@ export default class WebRTCPlayer implements Player {
                 this._messageQueue.push(message);
             }
         }
-
-        // [수정] RosbridgePlayer와 유사한 안정적인 상태 업데이트 방식
-        if (newTopicsFound || this._messageQueue.length > 0) {
-            void this.emitState();
-        }
     }
 
-    // [수정] emitState를 비동기(async)로 만들고, 동시에 여러 번 호출되지 않도록 수정
-    private async emitState(): Promise<void> {
-        if (!this._listener || this._closed || this._isEmitting) {
-            return;
-        }
-        this._isEmitting = true;
+    // [핵심 수정] emitState는 이제 고정 타이머에 의해서만 주기적으로 호출됩니다.
+    private emitState(): void {
+        if (!this._listener || this._closed) return;
 
         const messages = [...this._messageQueue];
         this._messageQueue = [];
@@ -129,7 +129,6 @@ export default class WebRTCPlayer implements Player {
 
         const playerState: PlayerState = {
             presence,
-            // [수정] messageCache 에러를 해결하기 위한 최소한의 progress 객체
             progress: { fullyLoadedFractionRanges: [] },
             capabilities: [],
             profile: "ros1",
@@ -153,12 +152,20 @@ export default class WebRTCPlayer implements Player {
             },
             problems: this._problems.length > 0 ? this._problems : undefined,
         };
+        void this._listener(playerState);
+    }
 
-        try {
-            await this._listener(playerState);
-        } finally {
-            this._isEmitting = false;
+    close(): void {
+        this._closed = true;
+        this._isPlaying = false;
+
+        // [핵심 수정] 플레이어가 닫힐 때 타이머를 반드시 정리합니다.
+        if (this._emitTimer) {
+            clearInterval(this._emitTimer);
         }
+
+        void this.connection.close();
+        this._messageQueue = [];
     }
 
     // ... (이하 나머지 코드는 모두 이전과 동일합니다) ...
@@ -167,7 +174,7 @@ export default class WebRTCPlayer implements Player {
             const connected = await this.connection.connect();
             if (connected) {
                 this._isPlaying = true;
-                await this.emitState();
+                this.emitState(); // 초기 상태는 한 번 전송
             } else {
                 this.addProblem("Failed to establish WebRTC connection", "error");
             }
@@ -183,7 +190,7 @@ export default class WebRTCPlayer implements Player {
         if (newState === WebRTCConnectionState.CONNECTED) { this.clearProblems(); }
         else if (newState === WebRTCConnectionState.FAILED || newState === WebRTCConnectionState.DISCONNECTED) { this.addProblem("Lost connection to data source.", "error"); }
         else if (newState === WebRTCConnectionState.RECONNECTING) { this.addProblem("Attempting to reconnect...", "warn"); }
-        void this.emitState();
+        this.emitState();
     }
     private updateTopicStatistics(message: MessageEvent<unknown>): void {
         if (!this._topicStats.has(message.topic)) {
@@ -195,7 +202,6 @@ export default class WebRTCPlayer implements Player {
         this._totalBytesReceived += message.sizeInBytes;
     }
     setListener(listener: (playerState: PlayerState) => Promise<void>): void { this._listener = listener; }
-    close(): void { this._closed = true; this._isPlaying = false; void this.connection.close(); this._messageQueue = []; }
     setSubscriptions(subscriptions: SubscribePayload[]): void { this._subscriptions.clear(); for (const sub of subscriptions) { this._subscriptions.set(sub.topic, sub); } }
     setPublishers(_publishers: AdvertiseOptions[]): void { /* No-op */ }
     setParameter(_key: string, _value: ParameterValue): void { /* No-op */ }
